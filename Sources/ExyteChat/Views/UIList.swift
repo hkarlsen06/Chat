@@ -85,6 +85,26 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         tableView.scrollToRow(at: IndexPath(row: 0, section: 0), at: scrollPosition, animated: animated)
     }
 
+    private func isPinnedToBottom(_ tableView: UITableView) -> Bool {
+        guard type == .conversation else { return false }
+        return tableView.contentOffset.y <= 1
+    }
+
+    private func canAdjustBottomAnchor(_ tableView: UITableView) -> Bool {
+        !tableView.isDragging && !tableView.isTracking && !tableView.isDecelerating
+    }
+
+    private func maintainBottomAnchorIfNeeded(_ tableView: UITableView, wasPinnedToBottom: Bool) {
+        guard wasPinnedToBottom, canAdjustBottomAnchor(tableView) else { return }
+
+        scrollToBottom(tableView, animated: false)
+
+        DispatchQueue.main.async { [weak tableView] in
+            guard let tableView, self.canAdjustBottomAnchor(tableView) else { return }
+            self.scrollToBottom(tableView, animated: false)
+        }
+    }
+
     private func resolvedContentInsets() -> UIEdgeInsets {
         var insets = chatParams.contentInsets
         let overlayHeight = max(bottomOverlayHeight, 0)
@@ -104,14 +124,14 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
         guard tableView.contentInset != insets || tableView.scrollIndicatorInsets != insets else { return }
 
-        let shouldMaintainLiveEdge = type == .conversation && isScrolledToBottom
+        let shouldMaintainLiveEdge = isPinnedToBottom(tableView)
 
         tableView.contentInset = insets
         tableView.scrollIndicatorInsets = insets
 
         if shouldMaintainLiveEdge {
             if tableView.numberOfSections > 0, tableView.numberOfRows(inSection: 0) > 0 {
-                scrollToBottom(tableView, animated: false)
+                maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: true)
             } else {
                 tableView.setContentOffset(
                     CGPoint(x: tableView.contentOffset.x, y: -insets.top),
@@ -159,7 +179,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                         || context.coordinator.sections.isEmpty
                         || pendingScrollTo != nil { // if we're gonna scroll later, then update cells without animation, and animate scrolling later
                         updateTableNoAnimation(tableView, context.coordinator)
-                    } else if animationMode == .natural, tableView.contentOffset == .zero {
+                    } else if animationMode == .natural, isPinnedToBottom(tableView) {
                         await updateTableWithAnimation(tableView, context.coordinator)
                     } else {
                         // if transaction.animationMode == .keepStable
@@ -288,6 +308,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
     @MainActor
     private func updateTableNoAnimation(_ tableView: UITableView, _ coordinator: Coordinator) {
+        let shouldMaintainBottomAnchor = isPinnedToBottom(tableView)
         coordinator.sections = sections
 
         CATransaction.begin()
@@ -298,9 +319,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             tableView.layoutIfNeeded()
         }
 
-        if type == .conversation, isScrolledToBottom {
-            scrollToBottom(tableView, animated: false)
-        }
+        maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: shouldMaintainBottomAnchor)
 
         CATransaction.commit()
     }
@@ -322,6 +341,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
     @MainActor
     private func applyOperations(_ tableView: UITableView, splitInfo: SplitInfo, updateContextClosure: ([MessagesSection])->()) async {
+        let shouldMaintainBottomAnchor = isPinnedToBottom(tableView)
+
         // step 0: preparation
         // prepare intermediate sections and operations
 //        print("whole appliedDeletes:\n", formatSections(splitInfo.appliedDeletes), "\n")
@@ -384,9 +405,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
         tableView.relayoutHeadersFooters()
 
-        if type == .conversation, isScrolledToBottom {
-            scrollToBottom(tableView, animated: false)
-        }
+        maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: shouldMaintainBottomAnchor)
 
         if !chatParams.isScrollEnabled {
             tableContentHeight = tableView.contentSize.height
