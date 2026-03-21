@@ -94,6 +94,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     @State private var pendingScrollTo: ScrollToParams?
     @State private var isScrolledToBottom: Bool = true
     @State private var tableContentHeight: CGFloat = 0
+    @State private var bottomChromeSize = CGSize.zero
 
     @State private var cellFrames = [String: CGRect]()
     /// Used to prevent the MainView from responding to keyboard changes while the Menu is active
@@ -231,11 +232,10 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             }
             
             if chatCustomizationParameters.isListAboveInputView {
-                listWithButton
-                if let builder = betweenListAndInputViewBuilder {
-                    builder()
+                ZStack(alignment: .bottom) {
+                    listWithButton
+                    bottomChrome
                 }
-                inputView
             } else {
                 inputView
                 if let builder = betweenListAndInputViewBuilder {
@@ -285,7 +285,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                             .shadow(color: .primary.opacity(0.1), radius: 2, y: 1)
                     }
                     .padding(.trailing, MessageView.horizontalScreenEdgePadding)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, bottomChromeSize.height + 8)
                 }
             }
             
@@ -315,6 +315,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             // MARK: - Data / type
 
             type: type,
+            bottomOverlayHeight: chatCustomizationParameters.isListAboveInputView ? bottomChromeSize.height : 0,
             sections: sections,
             ids: ids,
 
@@ -372,7 +373,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     }
 
     var inputView: some View {
-        ZStack {
+        Group {
             let customInputView = inputViewBuilder(
                 InputViewBuilderParameters(
                     text: $inputViewModel.text,
@@ -396,14 +397,27 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     photoPickerBackend: inputViewCustomizationParameters.photoPickerBackend,
                     localization: chatCustomizationParameters.localization
                 )
-            } else {
+            } else if inputViewCustomizationParameters.appliesFocusModifierToCustomInputView {
                 customInputView
                     .customFocus($globalFocusState.focus, equals: .uuid(viewModel.inputFieldId))
+            } else {
+                customInputView
             }
         }
         .environmentObject(globalFocusState)
         .onAppear(perform: inputViewModel.onStart)
         .onDisappear(perform: inputViewModel.onStop)
+    }
+
+    @ViewBuilder
+    var bottomChrome: some View {
+        VStack(spacing: 0) {
+            if let builder = betweenListAndInputViewBuilder {
+                builder()
+            }
+            inputView
+        }
+        .sizeGetter($bottomChromeSize)
     }
     
     func messageMenu(_ row: MessageRow) -> some View {

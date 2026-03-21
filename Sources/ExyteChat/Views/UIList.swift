@@ -30,6 +30,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     // MARK: - Data / type
 
     let type: ChatType
+    let bottomOverlayHeight: CGFloat
     let sections: [MessagesSection]
     let ids: [String]
 
@@ -68,6 +69,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         tableView.sectionFooterHeight = 0
         tableView.tableHeaderView = nil
         tableView.tableFooterView = UIView(frame: .zero)
+        updateInsets(for: tableView)
 
         transaction.updateQueue = updateQueue
         chatParams.onTransactionReady?(transaction)
@@ -75,15 +77,64 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         return tableView
     }
 
+    private func scrollToBottom(_ tableView: UITableView, animated: Bool) {
+        guard tableView.numberOfSections > 0, tableView.numberOfRows(inSection: 0) > 0 else { return }
+
+        let scrollPosition: UITableView.ScrollPosition = type == .conversation ? .top : .bottom
+        tableView.layoutIfNeeded()
+        tableView.scrollToRow(at: IndexPath(row: 0, section: 0), at: scrollPosition, animated: animated)
+    }
+
+    private func resolvedContentInsets() -> UIEdgeInsets {
+        var insets = chatParams.contentInsets
+        let overlayHeight = max(bottomOverlayHeight, 0)
+
+        switch type {
+        case .conversation:
+            insets.top += overlayHeight
+        case .comments:
+            insets.bottom += overlayHeight
+        }
+
+        return insets
+    }
+
+    private func updateInsets(for tableView: UITableView) {
+        let insets = resolvedContentInsets()
+
+        guard tableView.contentInset != insets || tableView.scrollIndicatorInsets != insets else { return }
+
+        let shouldMaintainLiveEdge = type == .conversation && isScrolledToBottom
+
+        tableView.contentInset = insets
+        tableView.scrollIndicatorInsets = insets
+
+        if shouldMaintainLiveEdge {
+            if tableView.numberOfSections > 0, tableView.numberOfRows(inSection: 0) > 0 {
+                scrollToBottom(tableView, animated: false)
+            } else {
+                tableView.setContentOffset(
+                    CGPoint(x: tableView.contentOffset.x, y: -insets.top),
+                    animated: false
+                )
+            }
+        }
+    }
+
     func updateUIView(_ tableView: UITableView, context: Context) {
+        if tableView.isScrollEnabled != chatParams.isScrollEnabled {
+            tableView.isScrollEnabled = chatParams.isScrollEnabled
+        }
+        if tableView.keyboardDismissMode != chatParams.keyboardDismissMode {
+            tableView.keyboardDismissMode = chatParams.keyboardDismissMode
+        }
+
+        updateInsets(for: tableView)
+
         if !chatParams.isScrollEnabled {
             DispatchQueue.main.async {
                 tableContentHeight = tableView.contentSize.height
             }
-        }
-
-        if tableView.contentInset != chatParams.contentInsets {
-            tableView.contentInset = chatParams.contentInsets
         }
 
         context.coordinator.chatParams = chatParams
@@ -156,7 +207,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         case .tableOffset(let offset):
             tableView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
         case .newestMessage:
-            tableView.setContentOffset(CGPoint(x: 0, y: 0), animated: false)
+            scrollToBottom(tableView, animated: false)
         case .oldestMessage:
             let lastSection = max(tableView.numberOfSections - 1, 0)
             let lastRow = max(tableView.numberOfRows(inSection: lastSection) - 1, 0)
@@ -247,6 +298,10 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             tableView.layoutIfNeeded()
         }
 
+        if type == .conversation, isScrolledToBottom {
+            scrollToBottom(tableView, animated: false)
+        }
+
         CATransaction.commit()
     }
 
@@ -328,6 +383,10 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         //print("4 finished inserts")
 
         tableView.relayoutHeadersFooters()
+
+        if type == .conversation, isScrolledToBottom {
+            scrollToBottom(tableView, animated: false)
+        }
 
         if !chatParams.isScrollEnabled {
             tableContentHeight = tableView.contentSize.height
