@@ -10,10 +10,6 @@ import PhotosUI
 import GiphyUISDK
 import ExyteMediaPicker
 
-private func chatViewLog(_ message: String) {
-    print("[ExyteChat/ChatView] \(message)")
-}
-
 public typealias MediaPickerLiveCameraStyle = LiveCameraCellStyle
 public typealias MediaPickerSelectionParameters = SelectionParameters // showFullscreenPreview doesn't work with the system picker
 
@@ -354,7 +350,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             }
         )
         .onAppear {
-            chatViewLog("list onAppear type=\(String(describing: type)) messages=\(ids.count) latestID=\(ids.last ?? "none") bottomChromeHeight=\(String(format: "%.1f", bottomChromeSize.height))")
             viewModel.didSendMessage = didSendMessage
             viewModel.inputViewModel = inputViewModel
             viewModel.globalFocusState = globalFocusState
@@ -366,7 +361,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             }
 
             inputViewModel.didSendMessage = { value in
-                chatViewLog("didSendMessage draftID=\(value.id ?? "nil") textCount=\(value.text.count) medias=\(value.medias.count) hasReply=\(value.replyMessage != nil) createdAt=\(value.createdAt.timeIntervalSince1970)")
                 Task { @MainActor in
                     didSendMessage(value)
                 }

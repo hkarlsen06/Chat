@@ -828,22 +828,4 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         }
     }
 
-    func formatRow(_ row: MessageRow) -> String {
-        String(
-            "id: \(row.id) text: \(String(row.message.attributedText.characters)) status: \(row.message.status ?? .none) date: \(row.message.createdAt) position in user group: \(row.positionInUserGroup) position in messages section: \(row.positionInMessagesSection) trigger: \(row.message.triggerRedraw)"
-        )
-    }
-
-    func formatSections(_ sections: [MessagesSection]) -> String {
-        var res = "(\(sections.count))(\(sections.map{$0.rows.count})){\n"
-        for section in sections.reversed() {
-            res += String("\t{\n")
-            for row in section.rows {
-                res += String("\t\t\(formatRow(row))\n")
-            }
-            res += String("\t}\n")
-        }
-        res += String("}")
-        return res
-    }
 }
