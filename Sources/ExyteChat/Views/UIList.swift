@@ -47,6 +47,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
     @State private var cancellables = Set<AnyCancellable>()
 
+    private let messageMenuLongPressDuration: TimeInterval = 0.35
+
     func makeUIView(context: Context) -> UITableView {
         let style = mainHeaderBuilder != nil || chatParams.showDateHeaders ? UITableView.Style.grouped : .plain
         let tableView = UITableView(frame: .zero, style: style)
@@ -70,6 +72,14 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         tableView.tableHeaderView = nil
         tableView.tableFooterView = UIView(frame: .zero)
         updateInsets(for: tableView)
+
+        if chatParams.showMessageMenuOnLongPress {
+            tableView.addGestureRecognizer(
+                context.coordinator.makeMessageMenuLongPressGesture(
+                    minimumPressDuration: messageMenuLongPressDuration
+                )
+            )
+        }
 
         transaction.updateQueue = updateQueue
         chatParams.onTransactionReady?(transaction)
@@ -497,7 +507,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         )
     }
 
-    class Coordinator: NSObject, UITableViewDataSource, UITableViewDelegate {
+    class Coordinator: NSObject, UITableViewDataSource, UITableViewDelegate, UIGestureRecognizerDelegate {
 
         @ObservedObject var viewModel: ChatViewModel
         @ObservedObject var inputViewModel: InputViewModel
@@ -578,6 +588,17 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             self.chatParams = chatParams
             self.messageParams = messageParams
             self.mainBackgroundColor = mainBackgroundColor
+        }
+
+        func makeMessageMenuLongPressGesture(minimumPressDuration: TimeInterval) -> UILongPressGestureRecognizer {
+            let recognizer = UILongPressGestureRecognizer(
+                target: self,
+                action: #selector(handleMessageMenuLongPress(_:))
+            )
+            recognizer.minimumPressDuration = minimumPressDuration
+            recognizer.cancelsTouchesInView = false
+            recognizer.delegate = self
+            return recognizer
         }
 
         func numberOfSections(in tableView: UITableView) -> Int {
@@ -694,17 +715,6 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                 )
                 .background(MessageMenuPreferenceViewSetter(id: row.id))
                 .rotationEffect(Angle(degrees: (type == .conversation ? 180 : 0)))
-                .applyIf(chatParams.showMessageMenuOnLongPress) {
-                    $0.simultaneousGesture(
-                        TapGesture().onEnded { } // add empty tap to prevent iOS17 scroll breaking bug (drag on cells stops working)
-                    )
-                    .onLongPressGesture {
-                        // Trigger haptic feedback
-                        self.impactGenerator.impactOccurred()
-                        // Launch the message menu
-                        self.viewModel.messageMenuRow = row
-                    }
-                }
             }
             .minSize(width: 0, height: 0)
             .margins(.all, 0)
@@ -768,6 +778,28 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             ca.backgroundColor = UIColor(bgColor)
 
             return ca
+        }
+
+        @objc
+        private func handleMessageMenuLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            guard recognizer.state == .began,
+                  let tableView = recognizer.view as? UITableView else { return }
+
+            let location = recognizer.location(in: tableView)
+            guard let indexPath = tableView.indexPathForRow(at: location),
+                  sections.indices.contains(indexPath.section),
+                  sections[indexPath.section].rows.indices.contains(indexPath.row) else { return }
+
+            impactGenerator.impactOccurred()
+            impactGenerator.prepare()
+            viewModel.messageMenuRow = sections[indexPath.section].rows[indexPath.row]
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
