@@ -23,7 +23,7 @@ public enum ReplyMode: CaseIterable, Sendable {
 }
 
 public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction: MessageMenuAction>: View {
-    
+
     /// User and MessageId
     public typealias TapAvatarClosure = (User, String) -> ()
     

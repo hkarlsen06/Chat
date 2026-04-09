@@ -596,7 +596,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                 action: #selector(handleMessageMenuLongPress(_:))
             )
             recognizer.minimumPressDuration = minimumPressDuration
-            recognizer.cancelsTouchesInView = false
+            // After the menu long press wins, child tap handlers must not also fire on release.
+            recognizer.cancelsTouchesInView = true
             recognizer.delegate = self
             return recognizer
         }
@@ -805,10 +806,22 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             let contentOffset = scrollView.contentOffset.y
             let maxTopOffset = scrollView.contentSize.height - scrollView.frame.height - 1
+            let scrolledToBottom = contentOffset <= 0
+            let scrolledToTop = contentOffset >= maxTopOffset
 
             chatParams.onContentOffsetChange?(contentOffset)
-            isScrolledToBottom = contentOffset <= 0
-            isScrolledToTop = contentOffset >= maxTopOffset
+
+            if isScrolledToBottom != scrolledToBottom || isScrolledToTop != scrolledToTop {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    if self.isScrolledToBottom != scrolledToBottom {
+                        self.isScrolledToBottom = scrolledToBottom
+                    }
+                    if self.isScrolledToTop != scrolledToTop {
+                        self.isScrolledToTop = scrolledToTop
+                    }
+                }
+            }
 
             guard !sections.isEmpty, !updateInProgress else { return }
 
