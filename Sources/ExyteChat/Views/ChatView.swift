@@ -364,11 +364,13 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     photoPickerBackend: inputViewCustomizationParameters.photoPickerBackend,
                     localization: chatCustomizationParameters.localization
                 )
-            } else if inputViewCustomizationParameters.appliesFocusModifierToCustomInputView {
-                customInputView
-                    .customFocus($globalFocusState.focus, equals: .uuid(viewModel.inputFieldId))
             } else {
-                customInputView
+                if inputViewCustomizationParameters.appliesFocusModifierToCustomInputView {
+                    customInputView
+                        .customFocus($globalFocusState.focus, equals: .uuid(viewModel.inputFieldId))
+                } else {
+                    customInputView
+                }
             }
         }
         .environmentObject(globalFocusState)
