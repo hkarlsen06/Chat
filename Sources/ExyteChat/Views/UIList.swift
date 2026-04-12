@@ -361,7 +361,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     private func updateTableWithAnimation(_ tableView: UITableView, _ coordinator: Coordinator) async {
         let prevSections = coordinator.sections
         let splitInfo = await performSplitInBackground(prevSections, sections)
-        await applyOperations(tableView, splitInfo: splitInfo) {
+        await applyOperations(tableView, splitInfo: splitInfo, animated: true) {
             coordinator.sections = $0
         }
     }
@@ -376,6 +376,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     private func applyOperations(
         _ tableView: UITableView,
         splitInfo: SplitInfo,
+        animated: Bool,
         updateContextClosure: ([MessagesSection]) -> Void
     ) async {
         let shouldMaintainBottomAnchor = isPinnedToBottom(tableView)
@@ -405,7 +406,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 //        print("operations edit:\n", splitInfo.editOperations.map { $0.description })
 //        print("operations insert:\n", splitInfo.insertOperations.map { $0.description })
 
-        await performBatchTableUpdates(tableView) {
+        await performBatchTableUpdatesIfNeeded(tableView, animated: animated) {
             // step 1: deletes
             // delete sections and rows if necessary
             //print("1 apply deletes")
@@ -417,7 +418,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         }
         //print("1 finished deletes")
 
-        await performBatchTableUpdates(tableView) {
+        await performBatchTableUpdatesIfNeeded(tableView, animated: animated) {
             // step 2: swaps
             // swap places for rows that moved inside the table
             // (example of how this happens. send two messages: first m1, then m2. if m2 is delivered to server faster, then it should jump above m1 even though it was sent later)
@@ -429,7 +430,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         }
         //print("2 finished swaps")
 
-        await performBatchTableUpdates(tableView) {
+        await performBatchTableUpdatesIfNeeded(tableView, animated: false) {
             // step 3: edits
             // check only sections that are already in the table for existing rows that changed and apply only them to table's dataSource without animation
             //print("3 apply edits")
@@ -446,10 +447,10 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         //print("4 apply inserts")
         updateContextClosure(sections)
 
-        let animated = isScrolledToBottom || isScrolledToTop
+        let animateInserts = isScrolledToBottom || isScrolledToTop
         await performBatchTableUpdates(tableView) {
             for operation in splitInfo.insertOperations {
-                applyOperation(operation, tableView: tableView, animateInserts: animated)
+                applyOperation(operation, tableView: tableView, animateInserts: animateInserts)
             }
         }
         //print("4 finished inserts")
@@ -460,6 +461,27 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
         if !chatParams.isScrollEnabled {
             tableContentHeight = tableView.contentSize.height
+        }
+    }
+
+    @MainActor
+    private func performBatchTableUpdatesIfNeeded(
+        _ tableView: UITableView,
+        animated: Bool,
+        _ closure: () -> Void
+    ) async {
+        guard animated else {
+            UIView.setAnimationsEnabled(false)
+            defer { UIView.setAnimationsEnabled(true) }
+
+            await performBatchTableUpdates(tableView) {
+                closure()
+            }
+            return
+        }
+
+        await performBatchTableUpdates(tableView) {
+            closure()
         }
     }
 
