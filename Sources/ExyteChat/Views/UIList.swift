@@ -189,11 +189,24 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
         Task {
             let animationMode = await updateQueue.getAnimationMode()
+            let transactionAnimated: Bool
+            if case .none = animationMode {
+                transactionAnimated = false
+            } else {
+                transactionAnimated = true
+            }
+            let shouldAnimateTableUpdate = TableUpdateAnimationPolicy.shouldAnimate(
+                transactionAnimated: transactionAnimated,
+                needsExternalScroll: needToScroll,
+                previousIDs: context.coordinator.ids,
+                newIDs: ids
+            )
             await updateQueue.markRealUpdate()
 
             await updateQueue.createJob {
                 if needToUpdateSections {
-                    if animationMode == .none
+                    if !shouldAnimateTableUpdate
+                        || animationMode == .none
                         || context.coordinator.sections.isEmpty
                         || pendingScrollTo != nil { // if we're gonna scroll later, then update cells without animation, and animate scrolling later
                         updateTableNoAnimation(tableView, context.coordinator)
@@ -205,6 +218,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                         await performInsertPreservingOffset(tableView, context.coordinator)
                     }
                 }
+
+                context.coordinator.ids = ids
 
                 if needToScroll, let scrollToParams = pendingScrollTo {
                     pendingScrollTo = nil // reset to only scroll once
@@ -577,7 +592,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                 }
             }
         }
-        let ids: [String]
+        var ids: [String]
 
         // MARK: - Customization
 
@@ -725,8 +740,19 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                 }
                 if chatParams.showDateHeaders {
                     dateViewBuilder(section)
-                }
-            }
+    }
+}
+
+enum TableUpdateAnimationPolicy {
+    static func shouldAnimate(
+        transactionAnimated: Bool,
+        needsExternalScroll: Bool,
+        previousIDs: [String],
+        newIDs: [String]
+    ) -> Bool {
+        transactionAnimated && !needsExternalScroll && previousIDs != newIDs
+    }
+}
         }
 
         @ViewBuilder
