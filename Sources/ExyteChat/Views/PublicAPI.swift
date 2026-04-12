@@ -90,6 +90,13 @@ public extension ChatView {
         return view
     }
 
+    /// Controls whether message list updates animate when rows are inserted, removed, or reordered.
+    func animateMessageUpdates(_ animate: Bool) -> ChatView {
+        var view = self
+        view.chatCustomizationParameters.animateMessageUpdates = animate
+        return view
+    }
+
     /// Controls whether the share button is shown in the fullscreen attachment viewer
     /// - Default is true
     func showShareAttachmentButton(_ show: Bool) -> ChatView {

@@ -195,7 +195,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             } else {
                 transactionAnimated = true
             }
-            let shouldAnimateTableUpdate = TableUpdateAnimationPolicy.shouldAnimate(
+            let shouldAnimateTableUpdate = chatParams.animateMessageUpdates && TableUpdateAnimationPolicy.shouldAnimate(
                 transactionAnimated: transactionAnimated,
                 needsExternalScroll: needToScroll,
                 previousIDs: context.coordinator.ids,
@@ -228,7 +228,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                         performScrollTo(tableView, scrollToParams: scrollToParams)
                     }
 
-                    if animationMode == .natural {
+                    if chatParams.animateMessageUpdates, animationMode == .natural {
                         await withCheckedContinuation { continuation in
                             UIView.animate(withDuration: 0.25) {
                                 perform()
