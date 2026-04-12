@@ -350,8 +350,26 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     }
 
     @MainActor
-    private func applyOperations(_ tableView: UITableView, splitInfo: SplitInfo, updateContextClosure: ([MessagesSection])->()) async {
+    private func applyOperations(
+        _ tableView: UITableView,
+        splitInfo: SplitInfo,
+        updateContextClosure: ([MessagesSection]) -> Void
+    ) async {
         let shouldMaintainBottomAnchor = isPinnedToBottom(tableView)
+
+        if shouldFallbackToFullReload(splitInfo: splitInfo) {
+            updateContextClosure(sections)
+            UIView.performWithoutAnimation {
+                tableView.reloadData()
+                tableView.layoutIfNeeded()
+            }
+
+            maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: shouldMaintainBottomAnchor)
+            if !chatParams.isScrollEnabled {
+                tableContentHeight = tableView.contentSize.height
+            }
+            return
+        }
 
         // step 0: preparation
         // prepare intermediate sections and operations
@@ -420,6 +438,23 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         if !chatParams.isScrollEnabled {
             tableContentHeight = tableView.contentSize.height
         }
+    }
+
+    private func shouldFallbackToFullReload(splitInfo: SplitInfo) -> Bool {
+        let hasSectionOperations =
+            splitInfo.deleteOperations.contains(where: isSectionOperation)
+            || splitInfo.insertOperations.contains(where: isSectionOperation)
+
+        if hasSectionOperations {
+            return true
+        }
+
+        // Diff-based row inserts are only stable at the live edges in this inverted table setup.
+        if !splitInfo.insertOperations.isEmpty && !(isScrolledToBottom || isScrolledToTop) {
+            return true
+        }
+
+        return false
     }
 
     private func isSectionOperation(_ operation: Operation) -> Bool {
