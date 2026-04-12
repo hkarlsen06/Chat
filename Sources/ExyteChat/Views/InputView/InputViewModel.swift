@@ -22,7 +22,7 @@ final class InputViewModel: ObservableObject {
     @Published var showActivityIndicator = false
 
     var recordingPlayer: RecordingPlayer?
-    var didSendMessage: ((DraftMessage) -> Void)?
+    var didSendMessage: ((DraftMessage) async -> Bool)?
 
     private var recorder = Recorder()
 
@@ -38,6 +38,7 @@ final class InputViewModel: ObservableObject {
     }
 
     func onStart() {
+        guard subscriptions.isEmpty else { return }
         subscribeValidation()
         subscribeGiphyPicker()
     }
@@ -47,22 +48,19 @@ final class InputViewModel: ObservableObject {
     }
 
     func reset() {
-        DispatchQueue.main.async { [weak self] in
-            self?.showPicker = false
-            self?.showGiphyPicker = false
-            self?.text = ""
-            self?.saveEditingClosure = nil
-            self?.attachments = InputViewAttachments()
-            self?.subscribeValidation()
-            self?.state = .empty
-        }
+        showPicker = false
+        showGiphyPicker = false
+        text = ""
+        saveEditingClosure = nil
+        attachments = InputViewAttachments()
+        state = .empty
     }
 
     func send() {
         Task {
             await recorder.stopRecording()
             await recordingPlayer?.reset()
-            sendMessage()
+            await sendMessage()
         }
     }
 
@@ -213,7 +211,7 @@ private extension InputViewModel {
 
 private extension InputViewModel {
 
-    func sendMessage() {
+    func sendMessage() async {
         showActivityIndicator = true
         let draft = DraftMessage(
             text: text,
@@ -223,10 +221,12 @@ private extension InputViewModel {
             replyMessage: attachments.replyMessage,
             createdAt: Date()
         )
-        didSendMessage?(draft)
-        DispatchQueue.main.async { [weak self] in
-            self?.showActivityIndicator = false
-            self?.reset()
+
+        let shouldReset = await (didSendMessage?(draft) ?? true)
+        showActivityIndicator = false
+
+        if shouldReset {
+            reset()
         }
     }
 }

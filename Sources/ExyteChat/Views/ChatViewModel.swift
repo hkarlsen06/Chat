@@ -28,7 +28,7 @@ final class ChatViewModel: ObservableObject {
     let inputFieldId = UUID()
     let messageRecordingPlayer = RecordingPlayer()
 
-    var didSendMessage: (DraftMessage) -> Void = {_ in }
+    var didSendMessage: (DraftMessage) async -> Bool = {_ in true }
     var didUpdateAttachmentStatus: (AttachmentUploadUpdate) -> Void = { _ in }
     var inputViewModel: InputViewModel?
     var globalFocusState: GlobalFocusState?
@@ -61,7 +61,9 @@ final class ChatViewModel: ObservableObject {
     }
 
     func sendMessage(_ message: DraftMessage) {
-        didSendMessage(message)
+        Task {
+            _ = await didSendMessage(message)
+        }
     }
 
     func messageMenuAction() -> (Message, DefaultMessageMenuAction) -> Void {

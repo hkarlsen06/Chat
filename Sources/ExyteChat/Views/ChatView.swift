@@ -62,7 +62,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     var type: ChatType
     var sections: [MessagesSection]
     var ids: [String]
-    var didSendMessage: (DraftMessage) -> Void
+    var didSendMessage: (DraftMessage) async -> Bool
     var didUpdateAttachmentStatus: ((AttachmentUploadUpdate) -> Void)?
 
     // MARK: - Simple view builders
@@ -98,6 +98,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     @State private var cellFrames = [String: CGRect]()
     /// Used to prevent the MainView from responding to keyboard changes while the Menu is active
     @State private var isShowingMenu = false
+    @State private var pendingScrollToBottomTask: Task<Void, Never>?
 
     public var body: some View {
         mainView
@@ -247,7 +248,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
 
                 if chatCustomizationParameters.showScrollToBottomButton, !isScrolledToBottom {
                     Button {
-                        self.pendingScrollTo = ScrollToParams(.newestMessage) // Cannot assign to property: 'self' is immutable
+                        requestScrollToBottom()
                     } label: {
                         theme.images.scrollToBottom
                             .frame(width: 40, height: 40)
@@ -332,10 +333,29 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             }
 
             inputViewModel.didSendMessage = { value in
-                Task { @MainActor in
-                    didSendMessage(value)
+                let accepted = await didSendMessage(value)
+                if accepted, type == .conversation {
+                    scheduleScrollToBottom()
                 }
+                return accepted
             }
+        }
+        .onDisappear {
+            pendingScrollToBottomTask?.cancel()
+            pendingScrollToBottomTask = nil
+        }
+    }
+
+    private func requestScrollToBottom() {
+        pendingScrollTo = ScrollToParams(.newestMessage)
+    }
+
+    private func scheduleScrollToBottom() {
+        pendingScrollToBottomTask?.cancel()
+        pendingScrollToBottomTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            requestScrollToBottom()
         }
     }
 
