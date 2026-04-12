@@ -447,10 +447,9 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         //print("4 apply inserts")
         updateContextClosure(sections)
 
-        let animateInserts = isScrolledToBottom || isScrolledToTop
-        await performBatchTableUpdates(tableView) {
+        await performBatchTableUpdatesIfNeeded(tableView, animated: animated) {
             for operation in splitInfo.insertOperations {
-                applyOperation(operation, tableView: tableView, animateInserts: animateInserts)
+                applyOperation(operation, tableView: tableView)
             }
         }
         //print("4 finished inserts")
