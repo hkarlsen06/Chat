@@ -18,6 +18,7 @@ struct ChatCustomizationParameters {
     var showMessageMenuOnLongPress: Bool = true
     var showShareAttachmentButton: Bool = true
     var animateMessageUpdates: Bool = true
+    var overlaysInputView: Bool = true
     var keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
     var messageMenuAnimationDuration: CGFloat = 0.3
     var contentInsets: UIEdgeInsets = .zero

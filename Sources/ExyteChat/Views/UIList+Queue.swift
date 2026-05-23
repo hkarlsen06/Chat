@@ -88,26 +88,24 @@ actor UpdateQueue {
 
     // MARK: - Job scheduling
 
-    func createJob(_ work: @escaping @Sendable @MainActor () async -> Void) {
-        Task {
-            await withCheckedContinuation { jobContinuation in
+    func createJob(_ work: @escaping @Sendable @MainActor () async -> Void) async {
+        await withCheckedContinuation { jobContinuation in
 
-                var txContinuation: CheckedContinuation<Void, Never>? = nil
+            var txContinuation: CheckedContinuation<Void, Never>? = nil
 
-                if let i = orphanTransactions.indices.first {
-                    let tx = orphanTransactions.remove(at: i)
-                    txContinuation = tx.continuation
-                }
-
-                queue.append(Job(
-                    work: work,
-                    continuation: jobContinuation,
-                    transactionContinuation: txContinuation
-                ))
-
-                debug("createJob")
-                processNextIfNeeded()
+            if let i = orphanTransactions.indices.first {
+                let tx = orphanTransactions.remove(at: i)
+                txContinuation = tx.continuation
             }
+
+            queue.append(Job(
+                work: work,
+                continuation: jobContinuation,
+                transactionContinuation: txContinuation
+            ))
+
+            debug("createJob")
+            processNextIfNeeded()
         }
     }
 

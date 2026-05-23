@@ -97,6 +97,16 @@ public extension ChatView {
         return view
     }
 
+    /// Controls whether the input view overlays the message list.
+    ///
+    /// Disabling the overlay makes the list and input share vertical layout, avoiding double
+    /// movement during interactive keyboard dismissal.
+    func overlaysInputView(_ overlays: Bool) -> ChatView {
+        var view = self
+        view.chatCustomizationParameters.overlaysInputView = overlays
+        return view
+    }
+
     /// Controls whether the share button is shown in the fullscreen attachment viewer
     /// - Default is true
     func showShareAttachmentButton(_ show: Bool) -> ChatView {
@@ -148,6 +158,11 @@ public extension ChatView {
         var view = self
         view.chatCustomizationParameters.scrollToParams = scrollToParams
         return view
+    }
+
+    /// Scroll to a message by ID, centered in the list.
+    func scrollToMessageID(_ messageID: String?) -> ChatView {
+        scrollTo(messageID.map { ScrollToParams(messageID: $0, position: .middle) })
     }
 
     /// UITableView's will display cell delegate calls this closure

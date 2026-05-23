@@ -204,7 +204,12 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             }
             
             if chatCustomizationParameters.isListAboveInputView {
-                ZStack(alignment: .bottom) {
+                if chatCustomizationParameters.overlaysInputView {
+                    ZStack(alignment: .bottom) {
+                        listWithButton
+                        bottomChrome
+                    }
+                } else {
                     listWithButton
                     bottomChrome
                 }
@@ -257,13 +262,21 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                             .shadow(color: .primary.opacity(0.1), radius: 2, y: 1)
                     }
                     .padding(.trailing, MessageView.horizontalScreenEdgePadding)
-                    .padding(.bottom, bottomChromeSize.height + 8)
+                    .padding(.bottom, scrollToBottomButtonBottomPadding)
                 }
             }
             
         case .comments:
             list
         }
+    }
+
+    private var bottomChromeOverlayHeight: CGFloat {
+        chatCustomizationParameters.overlaysInputView ? bottomChromeSize.height : 0
+    }
+
+    private var scrollToBottomButtonBottomPadding: CGFloat {
+        bottomChromeOverlayHeight + 8
     }
     
     @ViewBuilder
@@ -287,7 +300,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             // MARK: - Data / type
 
             type: type,
-            bottomOverlayHeight: chatCustomizationParameters.isListAboveInputView ? bottomChromeSize.height : 0,
+            bottomOverlayHeight: chatCustomizationParameters.isListAboveInputView ? bottomChromeOverlayHeight : 0,
             sections: sections,
             ids: ids,
 

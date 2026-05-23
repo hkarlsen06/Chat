@@ -186,8 +186,9 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
         context.coordinator.latestUpdateSections = sections
         context.coordinator.updateInProgress = true
+        let previousIDs = context.coordinator.ids
 
-        Task {
+        Task { @MainActor in
             let animationMode = await updateQueue.getAnimationMode()
             let transactionAnimated: Bool
             if case .none = animationMode {
@@ -198,7 +199,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             let shouldAnimateTableUpdate = chatParams.animateMessageUpdates && TableUpdateAnimationPolicy.shouldAnimate(
                 transactionAnimated: transactionAnimated,
                 needsExternalScroll: needToScroll,
-                previousIDs: context.coordinator.ids,
+                previousIDs: previousIDs,
                 newIDs: ids
             )
             await updateQueue.markRealUpdate()
@@ -772,19 +773,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                 }
                 if chatParams.showDateHeaders {
                     dateViewBuilder(section)
-    }
-}
-
-enum TableUpdateAnimationPolicy {
-    static func shouldAnimate(
-        transactionAnimated: Bool,
-        needsExternalScroll: Bool,
-        previousIDs: [String],
-        newIDs: [String]
-    ) -> Bool {
-        transactionAnimated && !needsExternalScroll && previousIDs != newIDs
-    }
-}
+                }
+            }
         }
 
         @ViewBuilder
@@ -984,4 +974,15 @@ enum TableUpdateAnimationPolicy {
         }
     }
 
+}
+
+enum TableUpdateAnimationPolicy {
+    static func shouldAnimate(
+        transactionAnimated: Bool,
+        needsExternalScroll: Bool,
+        previousIDs: [String],
+        newIDs: [String]
+    ) -> Bool {
+        transactionAnimated && !needsExternalScroll && previousIDs != newIDs
+    }
 }
