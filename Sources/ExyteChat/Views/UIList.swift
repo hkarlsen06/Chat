@@ -160,6 +160,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     }
 
     func updateUIView(_ tableView: UITableView, context: Context) {
+        context.coordinator.messageBuilder = messageBuilder
+
         if tableView.isScrollEnabled != chatParams.isScrollEnabled {
             tableView.isScrollEnabled = chatParams.isScrollEnabled
         }
@@ -608,7 +610,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
         // MARK: - View builders
 
-        let messageBuilder: MessageBuilderParamsClosure
+        var messageBuilder: MessageBuilderParamsClosure
         let mainHeaderBuilder: (()->AnyView)?
         let dateHeaderBuilder: ((Date)->AnyView)?
 
