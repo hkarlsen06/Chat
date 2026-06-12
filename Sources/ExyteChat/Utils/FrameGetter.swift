@@ -77,10 +77,10 @@ public extension View {
     }
 }
 
-actor MessageMenuPreferenceKey: PreferenceKey {
+struct MessageMenuPreferenceKey: PreferenceKey {
     typealias Value = [String: CGRect]
 
-    static var defaultValue: Value = [:]
+    static let defaultValue: Value = [:]
 
     static func reduce(value: inout Value, nextValue: () -> Value) {
         value.merge(nextValue()) { (_, new) in new }

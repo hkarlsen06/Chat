@@ -48,7 +48,6 @@ struct MessageView: View {
         let isCurrentUser = message.user.isCurrentUser
         let bubblePaddings = MessageView.horizontalScreenEdgePadding * 2 + MessageView.horizontalBubblePadding
         let avatarViewWithPaddings = params.avatarSize + MessageView.horizontalSpacing
-        let statusViewWithPaddings = MessageView.statusViewWidth + MessageView.horizontalSpacing
         let textPaddings = MessageView.horizontalTextPadding * 2
         let widthWithoutMedia =
             UIScreen.main.bounds.width
@@ -77,13 +76,7 @@ struct MessageView: View {
     }
 
     var reactionViewWidth: CGFloat {
-        struct Cache { static var value: CGFloat? }
-        if let value = Cache.value { return value }
-
-        let value = AttributedString("🙃️️️️").width(withConstrainedWidth: UIScreen.main.bounds.width, font: params.font) + ReactionBubble.padding * 2
-
-        Cache.value = value
-        return value
+        AttributedString("🙃️️️️").width(withConstrainedWidth: UIScreen.main.bounds.width, font: params.font) + ReactionBubble.padding * 2
     }
 
     var showAvatar: Bool {

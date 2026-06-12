@@ -5,13 +5,6 @@
 
 import SwiftUI
 
-protocol SwipeActionable {
-    func render(type: ChatType) -> UIImage
-    var action: (Message, @escaping (Message, DefaultMessageMenuAction) -> Void) -> Void { get }
-    var activeFor: (Message) -> Bool { get }
-    var background: Color? { get }
-}
-
 /// A simple container for both the leading and trailing swipe actions
 struct ListSwipeActions {
     let leading: ListSwipeAction?
@@ -26,15 +19,17 @@ struct ListSwipeActions {
 /// A container for either leading or trailing swipe actions and wether they support fullSwipe actions
 struct ListSwipeAction {
     let performsFirstActionWithFullSwipe: Bool
-    let actions: [SwipeActionable]
+    let actions: [SwipeAction]
 }
 
-public struct SwipeAction: SwipeActionable {
+public struct SwipeAction {
     let action: (Message, @escaping (Message, DefaultMessageMenuAction) -> Void) -> Void
     let activeFor: (Message) -> Bool
     let background: Color?
-    let content: AnyView
+    private let conversationImage: UIImage
+    private let commentsImage: UIImage
 
+    @MainActor
     public init<V: View>(
         action: @escaping (Message, @escaping (Message, DefaultMessageMenuAction) -> Void) -> Void,
         activeFor: @escaping (Message) -> Bool = { _ in true},
@@ -44,12 +39,18 @@ public struct SwipeAction: SwipeActionable {
         self.background = background
         self.action = action
         self.activeFor = activeFor
-        self.content = AnyView(content())
+        let content = AnyView(content())
+        self.conversationImage = SwipeAction.renderImage(content.rotationEffect(.degrees(180)))
+        self.commentsImage = SwipeAction.renderImage(content.rotationEffect(.degrees(0)))
     }
     
-    @MainActor
     func render(type: ChatType) -> UIImage {
-        let renderer = ImageRenderer(content: self.content.rotationEffect(type == .conversation ? .degrees(180) : .degrees(0)))
+        type == .conversation ? conversationImage : commentsImage
+    }
+
+    @MainActor
+    private static func renderImage<Content: View>(_ content: Content) -> UIImage {
+        let renderer = ImageRenderer(content: content)
         renderer.scale = UIScreen.main.scale
         return renderer.uiImage!
     }

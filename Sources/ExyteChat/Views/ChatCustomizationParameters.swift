@@ -58,7 +58,7 @@ public struct ScrollToParams: Equatable {
     }
 }
 
-struct MessageCustomizationParameters {
+struct MessageCustomizationParameters: @unchecked Sendable {
     var showTimeView = true
     var showUsername = false
     var linkPreviewLimit = 1

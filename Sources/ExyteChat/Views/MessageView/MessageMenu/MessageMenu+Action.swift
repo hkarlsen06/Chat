@@ -28,7 +28,9 @@ public enum DefaultMessageMenuAction: MessageMenuAction, Sendable {
     case edit(saveClosure: @Sendable (String) -> Void)
     case share
 
-    public init() {self.init()}
+    public init() {
+        self = .copy
+    }
 
     public func title() -> String {
         switch self {

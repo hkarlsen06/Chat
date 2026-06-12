@@ -183,7 +183,7 @@ public extension ChatView {
     /// NOTE: doesn't work well with `isScrollEnabled` false
     func enableLoadMore(offset: Int = 0, _ handler: @escaping ()->()) -> ChatView {
         var view = self
-        view.chatCustomizationParameters.olderMessagesPaginationHandler = PaginationHandler(offset: offset, handleClosure: handler)
+        view.chatCustomizationParameters.olderMessagesPaginationHandler = PaginationHandler(triggerType: .cellIndex(offset), handleClosure: handler)
         return view
     }
 
@@ -379,7 +379,7 @@ public extension ChatView {
     }
 
     func assetsPickerLimit(assetsPickerLimit: Int) -> ChatView {
-        var view = self
+        let view = self
         view.inputViewCustomizationParameters.mediaPickerParameters.selectionParameters.selectionLimit = assetsPickerLimit
         return view
     }

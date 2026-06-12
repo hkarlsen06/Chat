@@ -127,7 +127,7 @@ final actor Recorder {
     }
 }
 
-public struct RecorderSettings : Codable,Hashable {
+public struct RecorderSettings: Codable, Hashable, Sendable {
     var audioFormatID: AudioFormatID
     var sampleRate: CGFloat
     var numberOfChannels: Int

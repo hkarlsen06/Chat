@@ -6,10 +6,11 @@
 //
 
 import Foundation
+import UIKit
 
 extension String {
 
-    private static var markdownOptions = AttributedString.MarkdownParsingOptions(
+    private static let markdownOptions = AttributedString.MarkdownParsingOptions(
         allowsExtendedAttributes: false,
         interpretedSyntax: .inlineOnlyPreservingWhitespace,
         failurePolicy: .returnPartiallyParsedIfPossible,
@@ -17,15 +18,16 @@ extension String {
     )
     
     func applyDefaultAttributes() -> AttributedString {
-        var result = (try? AttributedString(markdown: self, options: String.markdownOptions)) ?? AttributedString(stringLiteral: self)
+        let result = (try? AttributedString(markdown: self, options: String.markdownOptions)) ?? AttributedString(stringLiteral: self)
 
-        for (link, range) in result.runs[\.link] {
+        let mutableResult = NSMutableAttributedString(result)
+        mutableResult.enumerateAttribute(NSAttributedString.Key.link, in: NSRange(location: 0, length: mutableResult.length)) { link, range, _ in
             if link != nil {
-                result[range].underlineStyle = .single
+                mutableResult.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
             }
         }
 
-        return result
+        return AttributedString(mutableResult)
     }
 
     var nonEmpty: String? {

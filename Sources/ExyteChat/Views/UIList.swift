@@ -140,12 +140,15 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     private func updateInsets(for tableView: UITableView) {
         let insets = resolvedContentInsets()
 
-        guard tableView.contentInset != insets || tableView.scrollIndicatorInsets != insets else { return }
+        guard tableView.contentInset != insets ||
+                tableView.verticalScrollIndicatorInsets != insets ||
+                tableView.horizontalScrollIndicatorInsets != insets else { return }
 
         let shouldMaintainLiveEdge = isPinnedToBottom(tableView)
 
         tableView.contentInset = insets
-        tableView.scrollIndicatorInsets = insets
+        tableView.verticalScrollIndicatorInsets = insets
+        tableView.horizontalScrollIndicatorInsets = insets
 
         if shouldMaintainLiveEdge {
             if tableView.numberOfSections > 0, tableView.numberOfRows(inSection: 0) > 0 {
@@ -362,17 +365,10 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
     @MainActor
     private func updateTableWithAnimation(_ tableView: UITableView, _ coordinator: Coordinator) async {
-        let prevSections = coordinator.sections
-        let splitInfo = await performSplitInBackground(prevSections, sections)
+        let splitInfo = SplitInfo.operationsSplit(oldSections: coordinator.sections, newSections: sections)
         await applyOperations(tableView, splitInfo: splitInfo, animated: true) {
             coordinator.sections = $0
         }
-    }
-
-    nonisolated private func performSplitInBackground(_ prevSections: [MessagesSection], _ sections: [MessagesSection]) async -> SplitInfo {
-        await Task.detached {
-            SplitInfo.operationsSplit(oldSections: prevSections, newSections: sections)
-        }.value
     }
 
     @MainActor
@@ -871,8 +867,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             return conf
         }
 
-        private func toContextualAction(_ item: SwipeActionable, message: Message) -> UIContextualAction {
-            let ca = UIContextualAction(style: .normal, title: nil) { (action, sourceView, completionHandler) in
+        private func toContextualAction(_ item: SwipeAction, message: Message) -> UIContextualAction {
+            let ca = UIContextualAction(style: .normal, title: nil) { (_, _, completionHandler) in
                 item.action(message, self.viewModel.messageMenuAction())
                 completionHandler(true)
             }

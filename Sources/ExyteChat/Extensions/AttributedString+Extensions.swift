@@ -57,9 +57,15 @@ extension AttributedString {
 
 public extension AttributedString {
     var urls: [URL] {
-        runs[\.link].map { (link, range) in
-            link?.absoluteURL
+        let attrString = NSAttributedString(self)
+        var urls: [URL] = []
+        attrString.enumerateAttribute(NSAttributedString.Key.link, in: NSRange(location: 0, length: attrString.length)) { link, _, _ in
+            if let url = link as? URL {
+                urls.append(url.absoluteURL)
+            } else if let string = link as? String, let url = URL(string: string) {
+                urls.append(url.absoluteURL)
+            }
         }
-        .compactMap { $0 }
+        return urls
     }
 }

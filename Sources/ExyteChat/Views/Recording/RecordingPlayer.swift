@@ -120,15 +120,15 @@ final actor RecordingPlayer: ObservableObject {
         let playerItem = AVPlayerItem(url: url)
         player = AVPlayer(playerItem: playerItem)
         
-        NotificationCenter.default.addObserver(forName: .chatAudioIsPlaying, object: nil, queue: nil) { notification in
-            if let sender = notification.object as? RecordingPlayer {
-                Task { [weak self] in
+        NotificationCenter.default.addObserver(forName: .chatAudioIsPlaying, object: nil, queue: nil) { [weak self] notification in
+            if let self, let sender = notification.object as? RecordingPlayer {
+                Task {
                     let senderURL = await sender.recording?.url
-                    let selfURL = await self?.recording?.url
-                    if senderURL == selfURL {
+                    let currentURL = await self.recording?.url
+                    if senderURL == currentURL {
                         return
                     }
-                    await self?.pause()
+                    await self.pause()
                 }
             }
         }
@@ -137,20 +137,22 @@ final actor RecordingPlayer: ObservableObject {
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: nil
-        ) { _ in
-            Task { [weak self] in
-                await self?.setPlayingState(false)
-                await self?.player?.seek(to: .zero)
-                await self?.didPlayTillEnd.send()
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task {
+                await self.setPlayingState(false)
+                await self.player?.seek(to: .zero)
+                await self.didPlayTillEnd.send()
             }
         }
 
         timeObserver = player?.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.2, preferredTimescale: 10),
             queue: .main
-        ) { time in
-            Task { [weak self] in
-                guard let self, let item = await self.player?.currentItem, !item.duration.seconds.isNaN else {
+        ) { [weak self] time in
+            guard let self else { return }
+            Task {
+                guard let item = await self.player?.currentItem, !item.duration.seconds.isNaN else {
                     return
                 }
                 await MainActor.run {

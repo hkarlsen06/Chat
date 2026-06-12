@@ -241,13 +241,13 @@ struct ReactionSelectionView: View {
             
             switch previousState {
             case .row:
-                Task {
+                _ = Task {
                     try await Task.sleep(for: .milliseconds(animationDuration * 1333))
                     reactionClosure(.emoji(emoji))
                 }
             case .search:
                 emojiEntryIsFocused = false
-                Task {
+                _ = Task {
                     try await Task.sleep(for: .milliseconds(animationDuration * 666))
                     reactionClosure(.emoji(selectedEmoji))
                 }

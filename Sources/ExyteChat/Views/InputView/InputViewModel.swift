@@ -32,8 +32,9 @@ final class InputViewModel: ObservableObject {
     private var subscriptions = Set<AnyCancellable>()
     
     func setRecorderSettings(recorderSettings: RecorderSettings = RecorderSettings()) {
+        let recorder = recorder
         Task {
-            await self.recorder.setRecorderSettings(recorderSettings)
+            await recorder.setRecorderSettings(recorderSettings)
         }
     }
 
@@ -137,19 +138,24 @@ final class InputViewModel: ObservableObject {
     }
 
     private func recordAudio() {
-        Task { @MainActor [recorder] in
-            if await recorder.isRecording { return }
-            attachments.recording = Recording()
-            let url = await recorder.startRecording { duration, samples in
-                DispatchQueue.main.async { [weak self] in
+        Task { [weak self, recorder] in
+            guard !(await recorder.isRecording) else { return }
+            await MainActor.run {
+                self?.attachments.recording = Recording()
+            }
+            let url = await recorder.startRecording { [weak self] duration, samples in
+                Task { @MainActor in
                     self?.attachments.recording?.duration = duration
                     self?.attachments.recording?.waveformSamples = samples
                 }
             }
-            if state == .waitingForRecordingPermission {
-                state = .isRecordingTap
+            await MainActor.run {
+                guard let self else { return }
+                if self.state == .waitingForRecordingPermission {
+                    self.state = .isRecordingTap
+                }
+                self.attachments.recording?.url = url
             }
-            attachments.recording?.url = url
         }
     }
 }
@@ -157,16 +163,13 @@ final class InputViewModel: ObservableObject {
 private extension InputViewModel {
 
     func validateDraft() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            guard state != .editing else { return } // special case
-            if !self.text.isEmpty || !self.attachments.medias.isEmpty {
-                self.state = .hasTextOrMedia
-            } else if self.text.isEmpty,
-                      self.attachments.medias.isEmpty,
-                      self.attachments.recording == nil {
-                self.state = .empty
-            }
+        guard state != .editing else { return } // special case
+        if !text.isEmpty || !attachments.medias.isEmpty {
+            state = .hasTextOrMedia
+        } else if text.isEmpty,
+                  attachments.medias.isEmpty,
+                  attachments.recording == nil {
+            state = .empty
         }
     }
 
@@ -193,14 +196,12 @@ private extension InputViewModel {
     }
   
     func subscribeRecordPlayer() {
-        Task { @MainActor in
-            if let recordingPlayer {
-                recordPlayerSubscription = recordingPlayer.didPlayTillEnd
-                    .receive(on: DispatchQueue.main)
-                    .sink { [weak self] in
-                        self?.state = .hasRecording
-                    }
-            }
+        if let recordingPlayer {
+            recordPlayerSubscription = recordingPlayer.didPlayTillEnd
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] in
+                    self?.state = .hasRecording
+                }
         }
     }
 
