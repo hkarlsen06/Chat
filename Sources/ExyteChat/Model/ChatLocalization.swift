@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct ChatLocalization: Hashable {
+public struct ChatLocalization: Hashable, Sendable {
     public var inputPlaceholder: String
     public var signatureText: String
     public var cancelButtonText: String

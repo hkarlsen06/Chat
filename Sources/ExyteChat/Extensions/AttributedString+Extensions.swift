@@ -19,7 +19,8 @@ extension AttributedString {
     func toAttrString(font: UIFont) -> NSAttributedString {
         var str = self
         for run in str.runs {
-            str[run.range].setAttributes(AttributeContainer([.font: font.applyingInlinePresentationIntent(run.inlinePresentationIntent)]))
+            let intent = run[AttributeScopes.FoundationAttributes.InlinePresentationIntentAttribute.self]
+            str[run.range].setAttributes(AttributeContainer([.font: font.applyingInlinePresentationIntent(intent)]))
         }
         return NSAttributedString(str)
     }
