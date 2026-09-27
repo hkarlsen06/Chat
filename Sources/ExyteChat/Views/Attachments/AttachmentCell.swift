@@ -58,9 +58,7 @@ public struct AttachmentCell: View {
                             VStack {
                                 Spacer()
                                 theme.images.message.playVideo
-                                    .resizable()
-                                    .foregroundColor(.white)
-                                    .frame(width: 36, height: 36)
+                                    .sizeAndColor(36, .white)
                                 Spacer()
                             }
                         case .cancelled:
@@ -72,13 +70,13 @@ public struct AttachmentCell: View {
                         VStack {
                             Spacer()
                             theme.images.message.playVideo
-                                .resizable()
-                                .foregroundColor(.white)
-                                .frame(width: 36, height: 36)
+                                .sizeAndColor(36, .white)
                             Spacer()
                         }
                     }
                 }
+            } else if attachment.type == .document {
+                documentContent
             } else {
                 content
                     .overlay {
@@ -91,6 +89,22 @@ public struct AttachmentCell: View {
         .simultaneousGesture(attachmentTapGesture)
     }
 
+    private var documentContent: some View {
+        VStack(spacing: 6) {
+            theme.images.message.attachedDocument
+                .sizeAndColor(32, theme.colors.mainTint)
+
+            Text(attachment.fileName ?? attachment.full.lastPathComponent)
+                .font(.caption2)
+                .foregroundColor(theme.colors.messageFriendText)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 6)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.colors.messageFriendBG)
+    }
+
     @ViewBuilder
     private func uploadingOverlay(percent: Int?) -> some View {
         Color.white.opacity(0.8)
@@ -99,7 +113,7 @@ public struct AttachmentCell: View {
                 .resizable()
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(.white, .black.opacity(0.4))
-                .frame(width: 36, height: 36)
+                .viewSize(36)
         }
         VStack {
             HStack {
@@ -126,7 +140,7 @@ public struct AttachmentCell: View {
                     .resizable()
                     .symbolRenderingMode(.palette)
                     .foregroundStyle(.white, .black.opacity(0.4))
-                    .frame(width: 26, height: 26)
+                    .viewSize(26)
                     .padding(4)
             }
             Spacer()
@@ -143,7 +157,7 @@ public struct AttachmentCell: View {
                     .resizable()
                     .symbolRenderingMode(.palette)
                     .foregroundStyle(.white, .black.opacity(0.4))
-                    .frame(width: 26, height: 26)
+                    .viewSize(26)
                     .padding(4)
             }
             Spacer()
@@ -184,23 +198,48 @@ struct AsyncImageView: View {
     let attachment: Attachment
     let size: CGSize
 
+    private var animatedURL: (url: URL, cacheKey: String?)? {
+        if attachment.thumbnail.isGIF {
+            return (attachment.thumbnail, attachment.thumbnailCacheKey)
+        } else if attachment.full.isGIF {
+            return (attachment.full, attachment.fullCacheKey)
+        }
+        return nil
+    }
+
     var body: some View {
-        CachedAsyncImage(
-            url: attachment.thumbnail,
-            cacheKey: attachment.thumbnailCacheKey
-        ) { imageView in
-            imageView
-                .resizable()
-                .scaledToFill()
-                .frame(width: size.width, height: size.height)
-                .clipped()
-        } placeholder: {
-            ZStack {
-                Rectangle()
-                    .foregroundColor(theme.colors.inputBG)
-                    .frame(width: size.width, height: size.height)
-                ActivityIndicator(size: 30, showBackground: false)
+        if let animatedURL {
+            CachedAnimatedImage(
+                url: animatedURL.url,
+                cacheKey: animatedURL.cacheKey,
+                contentMode: .fill
+            ) {
+                placeholder
             }
+            .frame(width: size.width, height: size.height)
+            .clipped()
+        } else {
+            CachedAsyncImage(
+                url: attachment.thumbnail,
+                cacheKey: attachment.thumbnailCacheKey
+            ) { imageView in
+                imageView
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size.width, height: size.height)
+                    .clipped()
+            } placeholder: {
+                placeholder
+            }
+        }
+    }
+
+    private var placeholder: some View {
+        ZStack {
+            Rectangle()
+                .foregroundColor(theme.colors.inputBG)
+                .frame(width: size.width, height: size.height)
+            ActivityIndicator(size: 30, showBackground: false)
         }
     }
 }

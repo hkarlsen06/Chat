@@ -268,8 +268,13 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         case .newestMessage:
             scrollToBottom(tableView, animated: false)
         case .oldestMessage:
-            let lastSection = max(tableView.numberOfSections - 1, 0)
-            let lastRow = max(tableView.numberOfRows(inSection: lastSection) - 1, 0)
+            // An empty table has no section 0 to ask about: clamping the index
+            // to 0 makes numberOfRows(inSection:) raise
+            // "Requested the number of rows for section (0) which is out of bounds".
+            guard tableView.numberOfSections > 0 else { return }
+
+            let lastSection = tableView.numberOfSections - 1
+            let lastRow = tableView.numberOfRows(inSection: lastSection) - 1
 
             guard lastRow >= 0 else { return }
 
@@ -283,7 +288,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
     @MainActor
     func scrollToRow(_ tableView: UITableView, messageID: String, position: UITableView.ScrollPosition, additionalOffset: CGFloat) {
-        guard let indexPath = indexPath(for: messageID, in: sections),
+        let indicatorIP = UIList.lastReadIndicatorIndexPath(sections: sections, enabled: chatParams.showLastReadIndicator)
+        guard let indexPath = indexPath(for: messageID, in: sections, indicatorIndexPath: indicatorIP),
               let rect = tableView.rectForRow(at: indexPath) as CGRect? else { return }
 
         let adjustedPosition =
@@ -310,9 +316,24 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         tableView.setContentOffset(CGPoint(x: 0, y: clampedY), animated: false)
     }
 
-    func indexPath(for id: String, in sections: [MessagesSection]) -> IndexPath? {
+    static func lastReadIndicatorIndexPath(sections: [MessagesSection], enabled: Bool) -> IndexPath? {
+        guard enabled else { return nil }
+        for (si, section) in sections.enumerated() {
+            for (ri, row) in section.rows.enumerated() {
+                if case .readBy = row.message.status, si > 0 || ri > 0 {
+                    return IndexPath(row: ri, section: si)
+                }
+            }
+        }
+        return nil
+    }
+
+    func indexPath(for id: String, in sections: [MessagesSection], indicatorIndexPath: IndexPath? = nil) -> IndexPath? {
         for (sectionIndex, section) in sections.enumerated() {
             if let rowIndex = section.rows.firstIndex(where: { $0.message.id == id }) {
+                if let ip = indicatorIndexPath, ip.section == sectionIndex, rowIndex >= ip.row {
+                    return IndexPath(row: rowIndex + 1, section: sectionIndex)
+                }
                 return IndexPath(row: rowIndex, section: sectionIndex)
             }
         }
@@ -322,10 +343,15 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     // MARK: update table
 
     func performInsertPreservingOffset(_ tableView: UITableView, _ coordinator: Coordinator) async {
-        guard let firstVisibleIndexPath = tableView.indexPathsForVisibleRows?.first,
+        let oldIndicatorIP = UIList.lastReadIndicatorIndexPath(sections: coordinator.sections, enabled: chatParams.showLastReadIndicator)
+
+        // Skip the indicator row — it has no backing message to preserve by ID
+        let visibleIndexPaths = tableView.indexPathsForVisibleRows ?? []
+        guard let firstVisibleIndexPath = visibleIndexPaths.first(where: { $0 != oldIndicatorIP }),
               let preservedVisibleRect = tableView.rectForRow(at: firstVisibleIndexPath) as CGRect? else { return }
 
-        let firstVisibleRow = coordinator.sections[firstVisibleIndexPath.section].rows[firstVisibleIndexPath.row]
+        let dataRow = adjustedDataRow(firstVisibleIndexPath.row, section: firstVisibleIndexPath.section, indicator: oldIndicatorIP)
+        let firstVisibleRow = coordinator.sections[firstVisibleIndexPath.section].rows[dataRow]
         let preservedVisibleMessageID = firstVisibleRow.message.id
         let preservedOffset = tableView.contentOffset.y
 
@@ -336,13 +362,18 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         tableView.reloadData()
         tableView.layoutIfNeeded()
 
-        guard let newIndexPath = indexPath(for: preservedVisibleMessageID, in: sections) else { return }
+        let newIndicatorIP = UIList.lastReadIndicatorIndexPath(sections: sections, enabled: chatParams.showLastReadIndicator)
+        guard let newIndexPath = indexPath(for: preservedVisibleMessageID, in: sections, indicatorIndexPath: newIndicatorIP) else { return }
         let newRectForCell = tableView.rectForRow(at: newIndexPath)
         let newOffset = preservedOffset + (newRectForCell.minY - preservedVisibleRect.minY)
-        //print("firstVisibleIndexPath: \(firstVisibleIndexPath), newIndexPath: \(newIndexPath), preservedOffset: \(preservedOffset), newOffset: \(newOffset), preservedVisibleRect: \(preservedVisibleRect), newRectForCell: \(newRectForCell)")
         tableView.setContentOffset(CGPoint(x: 0, y: newOffset), animated: false)
 
         tableView.relayoutHeadersFooters()
+    }
+
+    private func adjustedDataRow(_ tableRow: Int, section: Int, indicator: IndexPath?) -> Int {
+        guard let ip = indicator, ip.section == section, tableRow > ip.row else { return tableRow }
+        return tableRow - 1
     }
 
     @MainActor
@@ -365,8 +396,9 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
     @MainActor
     private func updateTableWithAnimation(_ tableView: UITableView, _ coordinator: Coordinator) async {
-        let splitInfo = SplitInfo.operationsSplit(oldSections: coordinator.sections, newSections: sections)
-        await applyOperations(tableView, splitInfo: splitInfo, animated: true) {
+        let prevSections = coordinator.sections
+        let splitInfo = SplitInfo.operationsSplit(oldSections: prevSections, newSections: sections)
+        await applyOperations(tableView, splitInfo: splitInfo, prevSections: prevSections, animated: true) {
             coordinator.sections = $0
         }
     }
@@ -375,6 +407,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     private func applyOperations(
         _ tableView: UITableView,
         splitInfo: SplitInfo,
+        prevSections: [MessagesSection],
         animated: Bool,
         updateContextClosure: ([MessagesSection]) -> Void
     ) async {
@@ -407,48 +440,50 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
         await performBatchTableUpdatesIfNeeded(tableView, animated: animated) {
             // step 1: deletes
-            // delete sections and rows if necessary
-            //print("1 apply deletes")
+            let deleteIndicatorIP = UIList.lastReadIndicatorIndexPath(sections: prevSections, enabled: chatParams.showLastReadIndicator)
             updateContextClosure(splitInfo.appliedDeletes)
-            //context.coordinator.sections = appliedDeletes
             for operation in splitInfo.deleteOperations {
-                applyOperation(operation, tableView: tableView)
+                applyOperation(operation, tableView: tableView, indicatorIndexPath: deleteIndicatorIP)
             }
         }
-        //print("1 finished deletes")
 
         await performBatchTableUpdatesIfNeeded(tableView, animated: animated) {
             // step 2: swaps
-            // swap places for rows that moved inside the table
-            // (example of how this happens. send two messages: first m1, then m2. if m2 is delivered to server faster, then it should jump above m1 even though it was sent later)
-            //print("2 apply swaps")
-            updateContextClosure(splitInfo.appliedDeletesSwapsAndEdits) // NOTE: this array already contains necessary edits, but won't be a problem for appplying swaps
+            let swapIndicatorIP = UIList.lastReadIndicatorIndexPath(sections: splitInfo.appliedDeletes, enabled: chatParams.showLastReadIndicator)
+            updateContextClosure(splitInfo.appliedDeletesSwapsAndEdits)
             for operation in splitInfo.swapOperations {
-                applyOperation(operation, tableView: tableView)
+                applyOperation(operation, tableView: tableView, indicatorIndexPath: swapIndicatorIP)
             }
         }
-        //print("2 finished swaps")
 
         await performBatchTableUpdatesIfNeeded(tableView, animated: false) {
             // step 3: edits
-            // check only sections that are already in the table for existing rows that changed and apply only them to table's dataSource without animation
-            //print("3 apply edits")
+            let editIndicatorIP = UIList.lastReadIndicatorIndexPath(sections: splitInfo.appliedDeletesSwapsAndEdits, enabled: chatParams.showLastReadIndicator)
             updateContextClosure(splitInfo.appliedDeletesSwapsAndEdits)
-
             for operation in splitInfo.editOperations {
-                applyOperation(operation, tableView: tableView)
+                applyOperation(operation, tableView: tableView, indicatorIndexPath: editIndicatorIP)
             }
         }
-        //print("3 finished edits")
 
         // step 4: inserts
-        // apply the rest of the changes to table's dataSource, i.e. inserts
-        //print("4 apply inserts")
+        let prevIndicatorIP = UIList.lastReadIndicatorIndexPath(sections: splitInfo.appliedDeletesSwapsAndEdits, enabled: chatParams.showLastReadIndicator)
+        let insertIndicatorIP = UIList.lastReadIndicatorIndexPath(sections: sections, enabled: chatParams.showLastReadIndicator)
         updateContextClosure(sections)
 
         await performBatchTableUpdatesIfNeeded(tableView, animated: animated) {
             for operation in splitInfo.insertOperations {
-                applyOperation(operation, tableView: tableView)
+                applyOperation(operation, tableView: tableView, indicatorIndexPath: insertIndicatorIP)
+
+                // When a section is inserted, UITableView uses its cached row counts as "before".
+                // If the indicator moves away from an existing section to the new one (or disappears),
+                // that section silently loses a virtual row — UITableView sees this as inconsistent.
+                // Explicitly delete the virtual indicator row so the before→after counts stay valid.
+                if case .insertSection(let newSection) = operation, let oldIP = prevIndicatorIP {
+                    let shiftedSection = newSection <= oldIP.section ? oldIP.section + 1 : oldIP.section
+                    if insertIndicatorIP?.section != shiftedSection {
+                        tableView.deleteRows(at: [IndexPath(row: oldIP.row, section: oldIP.section)], with: .none)
+                    }
+                }
             }
         }
         //print("4 finished inserts")
@@ -553,23 +588,28 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         }
     }
 
-    func applyOperation(_ operation: Operation, tableView: UITableView, animateInserts: Bool = true) {
+    func applyOperation(_ operation: Operation, tableView: UITableView, animateInserts: Bool = true, indicatorIndexPath: IndexPath? = nil) {
+        func tableRow(_ section: Int, _ row: Int) -> Int {
+            guard let ip = indicatorIndexPath, ip.section == section, row >= ip.row else { return row }
+            return row + 1
+        }
+
         switch operation {
         case .deleteSection(let section):
             tableView.deleteSections([section], with: .automatic)
         case .insertSection(let section):
             tableView.insertSections([section], with: .top)
         case .delete(let section, let row):
-            tableView.deleteRows(at: [IndexPath(row: row, section: section)], with: .top)
+            tableView.deleteRows(at: [IndexPath(row: tableRow(section, row), section: section)], with: .top)
         case .insert(let section, let row):
-            tableView.insertRows(at: [IndexPath(row: row, section: section)], with: animateInserts ? .top : .none)
+            tableView.insertRows(at: [IndexPath(row: tableRow(section, row), section: section)], with: animateInserts ? .top : .none)
         case .swap(let section, let rowFrom, let rowTo):
-            tableView.deleteRows(at: [IndexPath(row: rowFrom, section: section)], with: .top)
-            tableView.insertRows(at: [IndexPath(row: rowTo, section: section)], with: .top)
+            tableView.deleteRows(at: [IndexPath(row: tableRow(section, rowFrom), section: section)], with: .top)
+            tableView.insertRows(at: [IndexPath(row: tableRow(section, rowTo), section: section)], with: .top)
         case .edit(let section, let row):
-            tableView.reconfigureRows(at: [IndexPath(row: row, section: section)])
+            tableView.reconfigureRows(at: [IndexPath(row: tableRow(section, row), section: section)])
         case .editChangingHeight(let section, let row):
-            tableView.reloadRows(at: [IndexPath(row: row, section: section)], with: .automatic)
+            tableView.reloadRows(at: [IndexPath(row: tableRow(section, row), section: section)], with: .automatic)
         }
     }
 
@@ -701,22 +741,35 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             return recognizer
         }
 
+        var lastReadIndicatorIndexPath: IndexPath? {
+            UIList.lastReadIndicatorIndexPath(sections: sections, enabled: chatParams.showLastReadIndicator)
+        }
+
         func numberOfSections(in tableView: UITableView) -> Int {
             sections.count
         }
 
         func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-            sections[section].rows.count
+            let base = sections[section].rows.count
+            if let ip = lastReadIndicatorIndexPath, ip.section == section {
+                return base + 1
+            }
+            return base
+        }
+
+        private func messageRow(at indexPath: IndexPath) -> MessageRow? {
+            let indicatorIP = lastReadIndicatorIndexPath
+            guard indexPath != indicatorIP else { return nil }
+            let dataRow: Int
+            if let ip = indicatorIP, ip.section == indexPath.section, indexPath.row > ip.row {
+                dataRow = indexPath.row - 1
+            } else {
+                dataRow = indexPath.row
+            }
+            return sections[indexPath.section].rows[dataRow]
         }
 
         // MARK: - headers/footers
-
-//        func hasHeaderForSection(_ section: Int) -> Bool {
-//            chatParams.showDateHeaders
-//            || (section == 0 && mainHeaderBuilder == nil)
-//            || (section == sections.count - 1 && chatParams.olderMessagesPaginationHandler != nil)
-//            || (section == 0 && chatParams.newerMessagesPaginationHandler != nil)
-//        }
 
         // small optimization: exclude sections that can't possibly have a header/footer
         func hasSectionView(_ section: Int) -> Bool {
@@ -803,7 +856,17 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             tableViewCell.selectionStyle = .none
             tableViewCell.backgroundColor = UIColor(mainBackgroundColor)
 
-            let row = sections[indexPath.section].rows[indexPath.row]
+            if indexPath == lastReadIndicatorIndexPath {
+                tableViewCell.contentConfiguration = UIHostingConfiguration {
+                    LastReadIndicatorView()
+                        .rotationEffect(Angle(degrees: (type == .conversation ? 180 : 0)))
+                }
+                .minSize(width: 0, height: 0)
+                .margins(.all, 0)
+                return tableViewCell
+            }
+
+            let row = messageRow(at: indexPath)!
             tableViewCell.contentConfiguration = UIHostingConfiguration {
                 ChatMessageView(
                     viewModel: viewModel,
@@ -825,7 +888,9 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
             if updateInProgress { return }
 
-            lazy var message = sections[indexPath.section].rows[indexPath.row].message
+            guard let row = messageRow(at: indexPath) else { return }
+            lazy var message = row.message
+
             if let onWillDisplayCell = chatParams.onWillDisplayCell {
                 onWillDisplayCell(message)
             }
@@ -852,7 +917,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         func tableView(_ tableView: UITableView, leadingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
             guard let items = type == .conversation ? chatParams.listSwipeActions.trailing : chatParams.listSwipeActions.leading else { return nil }
             guard !items.actions.isEmpty else { return nil }
-            let message = sections[indexPath.section].rows[indexPath.row].message
+            guard let row = messageRow(at: indexPath) else { return nil }
+            let message = row.message
             let conf = UISwipeActionsConfiguration(actions: items.actions.filter({ $0.activeFor(message) }).map { toContextualAction($0, message: message) })
             conf.performsFirstActionWithFullSwipe = items.performsFirstActionWithFullSwipe
             return conf
@@ -861,7 +927,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
             guard let items = type == .conversation ? chatParams.listSwipeActions.leading : chatParams.listSwipeActions.trailing else { return nil }
             guard !items.actions.isEmpty else { return nil }
-            let message = sections[indexPath.section].rows[indexPath.row].message
+            guard let row = messageRow(at: indexPath) else { return nil }
+            let message = row.message
             let conf = UISwipeActionsConfiguration(actions: items.actions.filter({ $0.activeFor(message) }).map { toContextualAction($0, message: message) })
             conf.performsFirstActionWithFullSwipe = items.performsFirstActionWithFullSwipe
             return conf
@@ -888,11 +955,12 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             let location = recognizer.location(in: tableView)
             guard let indexPath = tableView.indexPathForRow(at: location),
                   sections.indices.contains(indexPath.section),
-                  sections[indexPath.section].rows.indices.contains(indexPath.row) else { return }
+                  indexPath.row < self.tableView(tableView, numberOfRowsInSection: indexPath.section),
+                  let row = messageRow(at: indexPath) else { return }
 
             impactGenerator.impactOccurred()
             impactGenerator.prepare()
-            viewModel.messageMenuRow = sections[indexPath.section].rows[indexPath.row]
+            viewModel.messageMenuRow = row
         }
 
         func gestureRecognizer(
@@ -984,3 +1052,15 @@ enum TableUpdateAnimationPolicy {
         transactionAnimated && !needsExternalScroll && previousIDs != newIDs
     }
 }
+
+@MainActor
+func performBatchTableUpdates(_ tableView: UITableView, closure: ()->()) async {
+    await withCheckedContinuation { continuation in
+        tableView.performBatchUpdates {
+            closure()
+        } completion: { _ in
+            continuation.resume()
+        }
+    }
+}
+

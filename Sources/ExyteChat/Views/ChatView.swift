@@ -99,83 +99,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     /// Used to prevent the MainView from responding to keyboard changes while the Menu is active
     @State private var isShowingMenu = false
     @State private var pendingScrollToBottomTask: Task<Void, Never>?
-
-    public var body: some View {
-        mainView
-            .background(chatBackground())
-            .environmentObject(keyboardState)
-            .onChange(of: inputViewModel.text) { _ , newValue in
-                inputViewCustomizationParameters.onInputTextChange?(newValue)
-            }
-            .onChange(of: inputViewCustomizationParameters.externalInputText) {
-                DispatchQueue.main.async {
-                    inputViewModel.text = inputViewCustomizationParameters.externalInputText ?? ""
-                }
-            }
-            .onChange(of: inputViewModel.showPicker) { _ , newValue in
-                if newValue {
-                    globalFocusState.focus = nil
-                }
-            }
-            .onChange(of: inputViewModel.showGiphyPicker) { _ , newValue in
-                if newValue {
-                    globalFocusState.focus = nil
-                }
-            }
-            .onChange(of: chatCustomizationParameters.scrollToParams) { scrollToParams in
-                self.pendingScrollTo = scrollToParams
-            }
-            .sheet(isPresented: $inputViewModel.showGiphyPicker) {
-                GiphyEditorView(giphyConfig: giphyConfig)
-                    .environmentObject(globalFocusState)
-            }
-            .fullScreenCover(isPresented: customMediaPickerBinding) {
-                AttachmentsEditor(
-                    inputViewModel: inputViewModel,
-                    inputViewBuilder: inputViewBuilder,
-                    mediaPickerParameters: inputViewCustomizationParameters.mediaPickerParameters,
-                    availableInputs: inputViewCustomizationParameters.availableInputs,
-                    localization: chatCustomizationParameters.localization
-                )
-                .environmentObject(globalFocusState)
-                .environmentObject(keyboardState)
-            }
-            .systemPhotoPicker(
-                isPresented: systemMediaPickerBinding,
-                selectionParameters: inputViewCustomizationParameters.mediaPickerParameters.selectionParameters
-            ) { medias in
-                inputViewModel.attachments.medias = medias
-            }
-            .fullScreenCover(isPresented: $viewModel.fullscreenAttachmentPresented) {
-                let attachments = sections.flatMap { section in section.rows.flatMap { $0.message.attachments } }
-                let index = attachments.firstIndex { $0.id == viewModel.fullscreenAttachmentItem?.id }
-
-                GeometryReader { g in
-                    FullscreenMediaPages(
-                        viewModel: FullscreenMediaPagesViewModel(
-                            attachments: attachments,
-                            index: index ?? 0
-                        ),
-                        safeAreaInsets: g.safeAreaInsets,
-                        showShareButton: chatCustomizationParameters.showShareAttachmentButton,
-                        onClose: { [viewModel] in
-                            viewModel.dismissAttachmentFullScreen()
-                        }
-                    )
-                    .ignoresSafeArea()
-                }
-            }
-            .sheet(item: $viewModel.shareAttachmentsItem) { item in
-                ShareSheet(activityItems: item.urls)
-            }
-            .overlay {
-                if viewModel.isPreparingAttachmentsShare {
-                    ProgressView()
-                        .padding(20)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                }
-            }
-    }
+    @State private var chatSize: CGSize = .zero
 
     /// the system picker only handles photo/video library browsing, not camera capture,
     /// so camera requests always fall through to the ExyteMediaPicker
@@ -185,16 +109,22 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
 
     private var customMediaPickerBinding: Binding<Bool> {
         Binding(
-            get: { inputViewModel.showPicker && !useSystemPhotoPicker },
-            set: { inputViewModel.showPicker = $0 }
+            get: { inputViewModel.showMediaPicker && !useSystemPhotoPicker },
+            set: { inputViewModel.showMediaPicker = $0 }
         )
     }
 
     private var systemMediaPickerBinding: Binding<Bool> {
         Binding(
-            get: { inputViewModel.showPicker && useSystemPhotoPicker },
-            set: { inputViewModel.showPicker = $0 }
+            get: { inputViewModel.showMediaPicker && useSystemPhotoPicker },
+            set: { inputViewModel.showMediaPicker = $0 }
         )
+    }
+
+    // MARK: - Body
+
+    public var body: some View {
+        mainViewWithBehaviorsAndSheets
     }
 
     var mainView: some View {
@@ -202,7 +132,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             if chatCustomizationParameters.showNetworkConnectionProblem, !networkMonitor.isConnected {
                 waitingForNetwork
             }
-            
+
             if chatCustomizationParameters.isListAboveInputView {
                 if chatCustomizationParameters.overlaysInputView {
                     ZStack(alignment: .bottom) {
@@ -223,8 +153,124 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
         }
         // Used to prevent ChatView movement during Emoji Keyboard invocation
         .ignoresSafeArea(isShowingMenu ? .keyboard : [])
+        .background(chatBackground())
+        .sizeGetter($chatSize)
+        .environment(\.chatSize, chatSize)
+        .environment(\.chatLocalization, chatCustomizationParameters.localization)
+        .environmentObject(keyboardState)
     }
-    
+
+    private var mainViewWithBehaviors: some View {
+        mainView
+            .onChange(of: inputViewModel.text) { _ , newValue in
+                inputViewCustomizationParameters.onInputTextChange?(newValue)
+            }
+            .onChange(of: inputViewCustomizationParameters.externalInputText) { _, newValue in
+                let newValue = newValue ?? ""
+                if inputViewModel.text != newValue {
+                    inputViewModel.text = newValue
+                }
+            }
+            // any attachment picker opening should resign the text field's focus
+            .onChange(of: [inputViewModel.showMediaPicker, inputViewModel.showGiphyPicker, inputViewModel.showDocumentPicker, inputViewModel.showLocationPicker]) { _, newValues in
+                if newValues.contains(true) {
+                    globalFocusState.focus = nil
+                }
+            }
+            .onChange(of: chatCustomizationParameters.scrollToParams) { scrollToParams in
+                self.pendingScrollTo = scrollToParams
+            }
+    }
+
+    private var mainViewWithBehaviorsAndSheets: some View {
+        mainViewWithBehaviors
+            .sheet(isPresented: $inputViewModel.showGiphyPicker) {
+                GiphyEditorView(giphyConfig: giphyConfig)
+                    .environmentObject(globalFocusState)
+            }
+            .fullScreenCover(isPresented: customMediaPickerBinding) {
+                AttachmentsEditor(
+                    inputViewModel: inputViewModel,
+                    inputViewBuilder: inputViewBuilder,
+                    mediaPickerParameters: inputViewCustomizationParameters.mediaPickerParameters,
+                    availableInputs: inputViewCustomizationParameters.availableInputs,
+                    localization: chatCustomizationParameters.localization
+                )
+                .environmentObject(globalFocusState)
+                .environmentObject(keyboardState)
+            }
+            .systemPhotoPicker(
+                isPresented: systemMediaPickerBinding,
+                medias: $inputViewModel.attachments.medias,
+                selectionParameters: inputViewCustomizationParameters.mediaPickerParameters.selectionParameters
+            )
+            .sheet(isPresented: $inputViewModel.showDocumentPicker) {
+                DocumentPicker { documents in
+                    inputViewModel.attachments.documents.append(contentsOf: documents)
+                }
+                .ignoresSafeArea()
+            }
+            .sheet(isPresented: $inputViewModel.showLocationPicker) {
+                LocationPickerView(
+                    localization: chatCustomizationParameters.localization,
+                    isStaticLocationAvailable: inputViewCustomizationParameters.availableInputs.contains(.staticLocation),
+                    isLiveLocationAvailable: inputViewCustomizationParameters.availableInputs.contains(.liveLocation)
+                ) { staticLocation in
+                    inputViewModel.attachments.staticLocation = staticLocation
+                } onPickLiveLocation: { liveLocation in
+                    inputViewModel.attachments.liveLocation = liveLocation
+                }
+            }
+            .fullScreenCover(isPresented: $viewModel.fullscreenAttachmentPresented) {
+                let attachments = sections.flatMap { section in section.rows.flatMap { $0.message.attachments } }
+                let index = attachments.firstIndex { $0.id == viewModel.fullscreenAttachmentItem?.id }
+
+                FullscreenMediaPages(
+                    viewModel: FullscreenMediaPagesViewModel(
+                        attachments: attachments,
+                        index: index ?? 0
+                    ),
+                    showShareButton: chatCustomizationParameters.showShareAttachmentButton,
+                    onClose: { [weak viewModel] in
+                        viewModel?.dismissAttachmentFullScreen()
+                    }
+                )
+            }
+            .fullScreenCover(isPresented: $viewModel.fullscreenLocationPresented) {
+                if let messageId = viewModel.fullscreenLocationMessageId,
+                   let message = sections.flatMap({ $0.rows }).first(where: { $0.message.id == messageId })?.message {
+                    if let liveLocation = message.liveLocation {
+                        FullscreenLocationView(
+                            liveLocation: liveLocation,
+                            isMyLiveLocation: viewModel.liveLocationBroadcaster.activeShare?.messageId == messageId,
+                            onStopSharing: { [weak viewModel] in
+                                viewModel?.stopLiveLocationSharing()
+                            },
+                            onClose: { [weak viewModel] in
+                                viewModel?.dismissFullscreenLocation()
+                            }
+                        )
+                    } else if let location = message.staticLocation {
+                        FullscreenLocationView(staticLocation: location) { [weak viewModel] in
+                            viewModel?.dismissFullscreenLocation()
+                        }
+                    }
+                }
+            }
+            .sheet(item: $viewModel.shareAttachmentsItem) { item in
+                ShareSheet(activityItems: item.urls)
+            }
+            .overlay {
+                if viewModel.isPreparingAttachmentsShare {
+                    ProgressView()
+                        .padding(20)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+    }
+
+    // MARK: - other views
+
     var waitingForNetwork: some View {
         VStack {
             Rectangle()
@@ -256,7 +302,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                         requestScrollToBottom()
                     } label: {
                         theme.images.scrollToBottom
-                            .frame(width: 40, height: 40)
+                            .viewSize(40)
                             .circleBackground(theme.colors.messageFriendBG)
                             .foregroundStyle(theme.colors.sendButtonBackground)
                             .shadow(color: .primary.opacity(0.1), radius: 2, y: 1)
@@ -344,9 +390,13 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             if let didUpdateAttachmentStatus {
                 viewModel.didUpdateAttachmentStatus = didUpdateAttachmentStatus
             }
+            viewModel.liveLocationBroadcaster.onEvent = chatCustomizationParameters.onLiveLocationBroadcast
 
             inputViewModel.didSendMessage = { value in
                 let accepted = await didSendMessage(value)
+                if accepted, let id = value.id, let liveLocation = value.liveLocation {
+                    viewModel.startLiveLocationSharing(messageId: id, liveLocation: liveLocation)
+                }
                 if accepted, type == .conversation {
                     scheduleScrollToBottom()
                 }
@@ -587,3 +637,78 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
 //            text: "That I shall say 'Good night' till it be morrow"),
 //    ]) { draft in }
 //}
+
+// The designated initializer is kept in this file, alongside the `@State` property
+// declarations it doesn't explicitly assign. Xcode 27's Swift 6.4 compiler emits an
+// unresolvable "variable initialization expression" linker symbol for a `@State`
+// property's default value when its type's initializer lives in a different file
+// (https://github.com/swiftlang/swift/issues/91700). This was previously declared in
+// ChatBuilderParameters.swift, which reproduced that bug for every `@State` property
+// on `ChatView`.
+extension ChatView {
+
+    public init(
+        messages: [Message],
+        chatType: ChatType = .conversation,
+        replyMode: ReplyMode = .quote,
+        didSendMessage: @escaping (DraftMessage) -> Void,
+        @ViewBuilder messageBuilder: @escaping (_ params: MessageBuilderParameters) -> MessageContent = { _ in
+            DummyView()
+        },
+        @ViewBuilder inputViewBuilder: @escaping (_ params: InputViewBuilderParameters) -> InputViewContent = { _ in
+            DummyView()
+        },
+        messageMenuAction: @escaping (
+            _ selectedMenuAction: MenuAction,
+            _ defaultActionClosure: @escaping (Message, DefaultMessageMenuAction) -> Void,
+            _ message: Message
+        ) -> Void = { (selectedMenuAction: DefaultMessageMenuAction, defaultActionClosure, message) in
+            defaultActionClosure(message, selectedMenuAction)
+        },
+        didUpdateAttachmentStatus: ((AttachmentUploadUpdate) -> Void)? = nil
+    ) {
+        let deduplicatedMessages = ChatView.sanitizedMessages(messages)
+        self.type = chatType
+        self.sections = ChatView.mapMessages(deduplicatedMessages, chatType: chatType, replyMode: replyMode)
+        self.ids = deduplicatedMessages.map { $0.id }
+        self.didSendMessage = { draftMessage in
+            didSendMessage(draftMessage)
+            return true
+        }
+        self.messageBuilder = messageBuilder
+        self.inputViewBuilder = inputViewBuilder
+        self.messageMenuAction = messageMenuAction
+        self.didUpdateAttachmentStatus = didUpdateAttachmentStatus
+    }
+
+    public init(
+        messages: [Message],
+        chatType: ChatType = .conversation,
+        replyMode: ReplyMode = .quote,
+        didSendMessage: @escaping (DraftMessage) async -> Bool,
+        @ViewBuilder messageBuilder: @escaping (_ params: MessageBuilderParameters) -> MessageContent = { _ in
+            DummyView()
+        },
+        @ViewBuilder inputViewBuilder: @escaping (_ params: InputViewBuilderParameters) -> InputViewContent = { _ in
+            DummyView()
+        },
+        messageMenuAction: @escaping (
+            _ selectedMenuAction: MenuAction,
+            _ defaultActionClosure: @escaping (Message, DefaultMessageMenuAction) -> Void,
+            _ message: Message
+        ) -> Void = { (selectedMenuAction: DefaultMessageMenuAction, defaultActionClosure, message) in
+            defaultActionClosure(message, selectedMenuAction)
+        },
+        didUpdateAttachmentStatus: ((AttachmentUploadUpdate) -> Void)? = nil
+    ) {
+        let deduplicatedMessages = ChatView.sanitizedMessages(messages)
+        self.type = chatType
+        self.sections = ChatView.mapMessages(deduplicatedMessages, chatType: chatType, replyMode: replyMode)
+        self.ids = deduplicatedMessages.map { $0.id }
+        self.didSendMessage = didSendMessage
+        self.messageBuilder = messageBuilder
+        self.inputViewBuilder = inputViewBuilder
+        self.messageMenuAction = messageMenuAction
+        self.didUpdateAttachmentStatus = didUpdateAttachmentStatus
+    }
+}

@@ -13,7 +13,7 @@ public struct Message: Identifiable, Sendable {
         case sending
         case sent
         case delivered
-        case read
+        case readBy([String]) // user ids
         case error(DraftMessage)
 
         public func hash(into hasher: inout Hasher) {
@@ -24,7 +24,7 @@ public struct Message: Identifiable, Sendable {
                 return hasher.combine("sent")
             case .delivered:
                 return hasher.combine("delivered")
-            case .read:
+            case .readBy:
                 return hasher.combine("read")
             case .error:
                 return hasher.combine("error")
@@ -39,8 +39,8 @@ public struct Message: Identifiable, Sendable {
                 return true
             case (.delivered, .delivered):
                 return true
-            case (.read, .read):
-                return true
+            case (.readBy(let r1), .readBy(let r2)):
+                return r1 == r2
             case ( .error(_), .error(_)):
                 return true
             default:
@@ -58,6 +58,8 @@ public struct Message: Identifiable, Sendable {
     public var attachments: [Attachment]
     public var reactions: [Reaction]
     public var giphyMediaId: String?
+    public var staticLocation: StaticLocation?
+    public var liveLocation: LiveLocation?
     public var recording: Recording?
     public var replyMessage: ReplyMessage?
     public var customData: [String: any Sendable]
@@ -80,6 +82,8 @@ public struct Message: Identifiable, Sendable {
         text: String = "",
         attachments: [Attachment] = [],
         giphyMediaId: String? = nil,
+        staticLocation: StaticLocation? = nil,
+        liveLocation: LiveLocation? = nil,
         reactions: [Reaction] = [],
         recording: Recording? = nil,
         replyMessage: ReplyMessage? = nil,
@@ -92,6 +96,8 @@ public struct Message: Identifiable, Sendable {
         self.attributedText = text.applyDefaultAttributes()
         self.attachments = attachments
         self.giphyMediaId = giphyMediaId
+        self.staticLocation = staticLocation
+        self.liveLocation = liveLocation
         self.reactions = reactions
         self.recording = recording
         self.replyMessage = replyMessage
@@ -106,6 +112,8 @@ public struct Message: Identifiable, Sendable {
         attributedText: AttributedString,
         attachments: [Attachment] = [],
         giphyMediaId: String? = nil,
+        staticLocation: StaticLocation? = nil,
+        liveLocation: LiveLocation? = nil,
         reactions: [Reaction] = [],
         recording: Recording? = nil,
         replyMessage: ReplyMessage? = nil,
@@ -118,6 +126,8 @@ public struct Message: Identifiable, Sendable {
         self.attributedText = attributedText
         self.attachments = attachments
         self.giphyMediaId = giphyMediaId
+        self.staticLocation = staticLocation
+        self.liveLocation = liveLocation
         self.reactions = reactions
         self.recording = recording
         self.replyMessage = replyMessage
@@ -146,6 +156,10 @@ public struct Message: Identifiable, Sendable {
             }
         }
 
+        let documentAttachments = draft.documents.map { document in
+            Attachment(id: document.id, url: document.url, type: .document, fileName: document.fileName, fileSize: document.fileSize)
+        }
+
         let giphyMediaId = draft.giphyMedia?.id
 
         return Message(
@@ -154,8 +168,10 @@ public struct Message: Identifiable, Sendable {
             status: status,
             createdAt: draft.createdAt,
             text: draft.text,
-            attachments: attachments,
+            attachments: attachments + documentAttachments,
             giphyMediaId: giphyMediaId,
+            staticLocation: draft.staticLocation,
+            liveLocation: draft.liveLocation,
             recording: draft.recording,
             replyMessage: draft.replyMessage
         )
@@ -176,6 +192,8 @@ extension Message: Equatable {
         lhs.createdAt == rhs.createdAt &&
         lhs.attributedText == rhs.attributedText &&
         lhs.giphyMediaId == rhs.giphyMediaId &&
+        lhs.staticLocation == rhs.staticLocation &&
+        lhs.liveLocation == rhs.liveLocation &&
         lhs.attachments == rhs.attachments &&
         lhs.reactions == rhs.reactions &&
         lhs.recording == rhs.recording &&

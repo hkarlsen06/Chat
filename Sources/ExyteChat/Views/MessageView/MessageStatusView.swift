@@ -20,7 +20,7 @@ struct MessageStatusView: View {
                 statusImageStyled(image: theme.images.message.sent, color: theme.colors.statusGray)
             case .delivered:
                 statusImageStyled(image: theme.images.message.delivered, color: theme.colors.statusGray)
-            case .read:
+            case .readBy:
                 statusImageStyled(image: theme.images.message.read, color: theme.colors.messageReadStatus)
             case .error:
                 Button(action: onRetry) {
@@ -32,8 +32,8 @@ struct MessageStatusView: View {
 
     private func statusImageStyled(image: Image, color: Color) -> some View {
         image
-            .renderingMode(.template)
             .resizable()
+            .renderingMode(.template)
             .aspectRatio(contentMode: .fit)
             .foregroundColor(color)
             .frame(width: 40)
@@ -47,7 +47,7 @@ struct SwiftUIView_Previews: PreviewProvider {
             MessageStatusView(status: .sending, onRetry: {})
             MessageStatusView(status: .sent, onRetry: {})
             MessageStatusView(status: .delivered, onRetry: {})
-            MessageStatusView(status: .read, onRetry: {})
+            MessageStatusView(status: .readBy([]), onRetry: {})
             MessageStatusView(status: .error(emptyDraft()), onRetry: {})
         }
     }

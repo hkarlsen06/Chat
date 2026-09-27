@@ -14,10 +14,8 @@ import AVFoundation
 
 struct SystemPhotoPickerModifier: ViewModifier {
     @Binding var isPresented: Bool
+    @Binding var medias: [Media]
     var selectionParameters: MediaPickerSelectionParameters
-    var onSelect: ([Media]) -> Void
-
-    @State private var selection: [PhotosPickerItem] = []
 
     private var matchingFilter: PHPickerFilter {
         switch selectionParameters.mediaType {
@@ -34,31 +32,45 @@ struct SystemPhotoPickerModifier: ViewModifier {
         }
     }
 
+    private var selection: Binding<[PhotosPickerItem]> {
+        Binding(
+            get: {
+                medias.compactMap { ($0.source as? SystemPickerMediaModel)?.item }
+            },
+            set: { newValue in
+                let existingByID = Dictionary(uniqueKeysWithValues: medias.compactMap { media in
+                    (media.source as? SystemPickerMediaModel)?.item.itemIdentifier.map { ($0, media) }
+                })
+
+                medias = newValue.map { item in
+                    guard let id = item.itemIdentifier, let existing = existingByID[id] else {
+                        return Media(source: SystemPickerMediaModel(item: item))
+                    }
+                    return existing
+                }
+            }
+        )
+    }
+
     func body(content: Content) -> some View {
         content
             .photosPicker(
                 isPresented: $isPresented,
-                selection: $selection,
+                selection: selection,
                 maxSelectionCount: selectionParameters.selectionLimit,
                 selectionBehavior: selectionBehavior,
                 matching: matchingFilter
             )
-            .onChange(of: selection) { _, newValue in
-                guard !newValue.isEmpty else { return }
-                let medias = newValue.map { Media(source: SystemPickerMediaModel(item: $0)) }
-                selection = []
-                onSelect(medias)
-            }
     }
 }
 
 extension View {
     func systemPhotoPicker(
         isPresented: Binding<Bool>,
-        selectionParameters: MediaPickerSelectionParameters,
-        onSelect: @escaping ([Media]) -> Void
+        medias: Binding<[Media]>,
+        selectionParameters: MediaPickerSelectionParameters
     ) -> some View {
-        modifier(SystemPhotoPickerModifier(isPresented: isPresented, selectionParameters: selectionParameters, onSelect: onSelect))
+        modifier(SystemPhotoPickerModifier(isPresented: isPresented, medias: medias, selectionParameters: selectionParameters))
     }
 }
 
@@ -82,7 +94,7 @@ private struct SystemPickerTransferFile: Transferable {
 }
 
 actor SystemPickerMediaModel: MediaModelProtocol {
-    private let item: PhotosPickerItem
+    nonisolated let item: PhotosPickerItem
     nonisolated let mediaType: MediaType?
     private var cachedURL: URL?
 

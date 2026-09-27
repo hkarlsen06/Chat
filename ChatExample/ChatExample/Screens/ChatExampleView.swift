@@ -94,6 +94,18 @@ struct ChatExampleView: View {
         .setMediaPickerLiveCameraStyle(.prominant)
         .setRecorderSettings(recorderSettings)
         .messageReactionDelegate(viewModel)
+        .showLastReadIndicator(true)
+        .setAvailableInputs([.text, .media, .giphy, .audio, .document, .staticLocation, .liveLocation])
+        .onLiveLocationBroadcast { event in
+            switch event {
+            case .updated(let messageId, let liveLocation):
+                viewModel.updateLiveLocation(messageId: messageId, liveLocation: liveLocation)
+            case .ended(let messageId):
+                guard var liveLocation = viewModel.messages.first(where: { $0.id == messageId })?.liveLocation else { return }
+                liveLocation.expiresAt = Date()
+                viewModel.updateLiveLocation(messageId: messageId, liveLocation: liveLocation)
+            }
+        }
         .swipeActions(edge: .leading, performsFirstActionWithFullSwipe: true, items: [replyAction])
         .navigationBarBackButtonHidden()
         .navigationBarTitleDisplayMode(.inline)
@@ -173,7 +185,6 @@ struct ChatExampleView: View {
                     }
                 }
             }
-            .padding(.leading, 10)
         }
     }
 

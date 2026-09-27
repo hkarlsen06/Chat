@@ -11,6 +11,7 @@ public extension EnvironmentValues {
     #if swift(>=6.0)
     @Entry var chatTheme = ChatTheme()
     @Entry var giphyConfig = GiphyConfiguration()
+    @Entry var chatLocalization = ChatLocalization.defaultLocalization
     #else
     var chatTheme: ChatTheme {
         get { self[ChatThemeKey.self] }
@@ -20,6 +21,11 @@ public extension EnvironmentValues {
     var giphyConfig: GiphyConfiguration {
         get { self[GiphyConfigurationKey.self] }
         set { self[GiphyConfigurationKey.self] = newValue }
+    }
+
+    var chatLocalization: ChatLocalization {
+        get { self[ChatLocalizationKey.self] }
+        set { self[ChatLocalizationKey.self] = newValue }
     }
     #endif
 }
@@ -32,6 +38,10 @@ public extension EnvironmentValues {
 
 public struct GiphyConfigurationKey: EnvironmentKey {
     public static let defaultValue = GiphyConfiguration()
+}
+
+public struct ChatLocalizationKey: EnvironmentKey {
+    public static let defaultValue = ChatLocalization.defaultLocalization
 }
 #endif
 
@@ -275,6 +285,7 @@ public struct ChatTheme: Sendable {
             public var attach: Image
             public var attachCamera: Image
             public var microphone: Image
+            public var clearText: Image
         }
 
         public struct FullscreenMedia: Sendable {
@@ -359,6 +370,7 @@ public struct ChatTheme: Sendable {
             attach: Image? = nil,
             attachCamera: Image? = nil,
             microphone: Image? = nil,
+            clearText: Image? = nil,
             fullscreenPlay: Image? = nil,
             fullscreenPause: Image? = nil,
             fullscreenMute: Image? = nil,
@@ -420,7 +432,8 @@ public struct ChatTheme: Sendable {
                 sticker: sticker ?? Image("sticker", bundle: .current),
                 attach: attach ?? Image("attach", bundle: .current),
                 attachCamera: attachCamera ?? Image("attachCamera", bundle: .current),
-                microphone: microphone ?? Image("microphone", bundle: .current)
+                microphone: microphone ?? Image("microphone", bundle: .current),
+                clearText: clearText ?? Image(systemName: "xmark.circle.fill")
             )
 
             self.fullscreenMedia = FullscreenMedia(

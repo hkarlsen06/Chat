@@ -10,7 +10,6 @@ struct FullscreenMediaPages: View {
     @Environment(\.chatTheme) private var theme
 
     @StateObject var viewModel: FullscreenMediaPagesViewModel
-    var safeAreaInsets: EdgeInsets
     var showShareButton: Bool = true
     var onClose: () -> Void
 
@@ -60,7 +59,7 @@ struct FullscreenMediaPages: View {
                         if isPreparingShare {
                             ProgressView()
                                 .tint(tintColor)
-                                .frame(width: 24, height: 24)
+                                .viewSize(24)
                                 .padding(5)
                         } else {
                             controlIcon(theme.images.fullscreenMedia.share) {
@@ -76,7 +75,6 @@ struct FullscreenMediaPages: View {
             Text("\(viewModel.index + 1)/\(viewModel.attachments.count)")
                 .foregroundColor(tintColor)
         }
-        .padding(.top, safeAreaInsets.top)
         .padding(.bottom, 8)
     }
 
@@ -145,7 +143,7 @@ private extension FullscreenMediaPages {
         image
             .resizable()
             .scaledToFit()
-            .frame(width: 24, height: 24)
+            .viewSize(24)
             .padding(5)
             .contentShape(Rectangle())
             .onTapGesture(perform: onTap)

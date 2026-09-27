@@ -19,6 +19,7 @@ struct ChatCustomizationParameters {
     var showShareAttachmentButton: Bool = true
     var animateMessageUpdates: Bool = true
     var overlaysInputView: Bool = true
+    var showLastReadIndicator: Bool = false
     var keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
     var messageMenuAnimationDuration: CGFloat = 0.3
     var contentInsets: UIEdgeInsets = .zero
@@ -27,6 +28,7 @@ struct ChatCustomizationParameters {
     var onContentOffsetChange: ((CGFloat) -> Void)? // Internal → External
     var onWillDisplayCell: ((Message) -> Void)?
     var onTransactionReady: ((TableUpdateTransaction) -> Void)?
+    var onLiveLocationBroadcast: ((LiveLocationBroadcastEvent) -> Void)?
 
     var olderMessagesPaginationHandler: PaginationHandler?
     var newerMessagesPaginationHandler: PaginationHandler?

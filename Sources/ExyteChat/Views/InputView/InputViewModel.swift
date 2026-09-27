@@ -15,8 +15,10 @@ final class InputViewModel: ObservableObject {
     @Published var state: InputViewState = .empty
 
     @Published var showGiphyPicker = false
-    @Published var showPicker = false
-  
+    @Published var showMediaPicker = false
+    @Published var showDocumentPicker = false
+    @Published var showLocationPicker = false
+
     @Published var mediaPickerMode = MediaPickerMode.photos
 
     @Published var showActivityIndicator = false
@@ -49,8 +51,10 @@ final class InputViewModel: ObservableObject {
     }
 
     func reset() {
-        showPicker = false
         showGiphyPicker = false
+        showMediaPicker = false
+        showDocumentPicker = false
+        showLocationPicker = false
         text = ""
         saveEditingClosure = nil
         attachments = InputViewAttachments()
@@ -82,12 +86,16 @@ final class InputViewModel: ObservableObject {
             showGiphyPicker = true
         case .photo:
             mediaPickerMode = .photos
-            showPicker = true
+            showMediaPicker = true
         case .add:
             mediaPickerMode = .camera
         case .camera:
             mediaPickerMode = .camera
-            showPicker = true
+            showMediaPicker = true
+        case .document:
+            showDocumentPicker = true
+        case .location:
+            showLocationPicker = true
         case .send:
             send()
         case .recordAudioTap:
@@ -164,10 +172,11 @@ private extension InputViewModel {
 
     func validateDraft() {
         guard state != .editing else { return } // special case
-        if !text.isEmpty || !attachments.medias.isEmpty {
+        let hasAttachments = !attachments.medias.isEmpty || !attachments.documents.isEmpty || attachments.staticLocation != nil || attachments.liveLocation != nil
+        if !text.isEmpty || hasAttachments {
             state = .hasTextOrMedia
         } else if text.isEmpty,
-                  attachments.medias.isEmpty,
+                  !hasAttachments,
                   attachments.recording == nil {
             state = .empty
         }
@@ -214,10 +223,16 @@ private extension InputViewModel {
 
     func sendMessage() async {
         showActivityIndicator = true
+        // live location shares need a stable id upfront so subsequent location updates can find this message again
+        let messageId = (attachments.liveLocation != nil) ? UUID().uuidString : nil
         let draft = DraftMessage(
+            id: messageId,
             text: text,
             medias: attachments.medias,
             giphyMedia: attachments.giphyMedia,
+            documents: attachments.documents,
+            staticLocation: attachments.staticLocation,
+            liveLocation: attachments.liveLocation,
             recording: attachments.recording,
             replyMessage: attachments.replyMessage,
             createdAt: Date()

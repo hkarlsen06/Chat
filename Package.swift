@@ -16,7 +16,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/exyte/MediaPicker.git",
-            from: "3.4.2"
+            from: "3.4.4"
         ),
         .package(
             url: "https://github.com/exyte/ActivityIndicatorView",
@@ -26,6 +26,10 @@ let package = Package(
             url: "https://github.com/onevcat/Kingfisher",
             from: "8.5.0"
         ),
+        .package(
+            url: "https://github.com/exyte/AnchoredPopup.git",
+            from: "1.1.3"
+        ),
     ],
     targets: [
         .target(
@@ -33,7 +37,8 @@ let package = Package(
             dependencies: [
                 .product(name: "ExyteMediaPicker", package: "MediaPicker"),
                 .product(name: "ActivityIndicatorView", package: "ActivityIndicatorView"),
-                .product(name: "Kingfisher", package: "Kingfisher")
+                .product(name: "Kingfisher", package: "Kingfisher"),
+                .product(name: "AnchoredPopup", package: "AnchoredPopup")
             ],
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency")
