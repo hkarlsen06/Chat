@@ -996,7 +996,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                let handler = chatParams.olderMessagesPaginationHandler,
                handler.hasMoreToLoad,
                case let .pixels(offset) = handler.triggerType,
-               contentOffset >= maxTopOffset,
+               contentOffset >= maxTopOffset - offset,
                let tableView = scrollView as? UITableView {
                 performOlderPagination(tableView)
             }

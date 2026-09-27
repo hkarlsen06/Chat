@@ -177,7 +177,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     globalFocusState.focus = nil
                 }
             }
-            .onChange(of: chatCustomizationParameters.scrollToParams) { scrollToParams in
+            .onChange(of: chatCustomizationParameters.scrollToParams) { _, scrollToParams in
                 self.pendingScrollTo = scrollToParams
             }
     }

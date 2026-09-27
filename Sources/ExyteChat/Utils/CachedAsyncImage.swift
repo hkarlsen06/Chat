@@ -99,7 +99,7 @@ public struct CachedAsyncImage<Content>: View where Content: View {
             return
         }
 
-        let resource = ImageResource(downloadURL: url, cacheKey: cacheKey ?? url.absoluteString)
+        let resource = KF.ImageResource(downloadURL: url, cacheKey: cacheKey ?? url.absoluteString)
 
         do {
             let image = try await withCheckedThrowingContinuation { continuation in

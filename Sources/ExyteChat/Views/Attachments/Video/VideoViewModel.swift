@@ -29,13 +29,12 @@ final class VideoViewModel: ObservableObject {
                 .receive(on: DispatchQueue.main)
                 .assign(to: &$status)
 
-            NotificationCenter.default.addObserver(
-                forName: .AVPlayerItemDidPlayToEndTime,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                self?.finishVideo()
-            }
+            NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime, object: player?.currentItem)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.finishVideo()
+                }
+                .store(in: &subscriptions)
         }
     }
 
