@@ -1,13 +1,13 @@
 {
-  "originHash" : "3ed86a7a2a5fc23fbff078742f07b6e8aed67b17ba80b79639a93c3bf52bf06c",
+  "originHash" : "ae12a388e61fbb77c10c5b1a97c22c7394c751bea6257933739abf2b84fc5069",
   "pins" : [
     {
       "identity" : "activityindicatorview",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/exyte/ActivityIndicatorView",
       "state" : {
-        "revision" : "15384b0f9ca3a9b072e12ab779d545e9717adba4",
-        "version" : "2.0.0"
+        "revision" : "41f89372c018decaf965e8dddeb6e5347741beb4",
+        "version" : "2.0.2"
       }
     },
     {
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/exyte/MediaPicker.git",
       "state" : {
-        "revision" : "ce2eda6300337d1478a78fc033bce8dd9bf4bb2c",
-        "version" : "3.3.2"
+        "revision" : "96dc0e21adaa9266bbb5698052c7ddfd22f69f0c",
+        "version" : "3.4.6"
       }
     }
   ],
