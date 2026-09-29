@@ -11,8 +11,6 @@ public final class KeyboardState: ObservableObject {
     @Published private(set) public var isShown: Bool = false
     @Published private(set) public var keyboardFrame: CGRect = .zero
     
-    private var subscriptions = Set<AnyCancellable>()
-
     init() {
         subscribeKeyboardNotifications()
     }
@@ -37,9 +35,9 @@ private extension KeyboardState {
         )
         .receive(on: RunLoop.main)
         
-        // Assign the CGRect to keyboardFrame and store the sub
-        pub.assign(to: \.keyboardFrame, on: self).store(in: &subscriptions)
-        // Map the CGRect into a Bool, assign it to isShown and store the sub
-        pub.map { $0 != .zero }.assign(to: \.isShown, on: self).store(in: &subscriptions)
+        // assign(to:) on a Published property ties the subscription to this object's lifetime,
+        // unlike assign(to:on:), which retains self and leaked every KeyboardState.
+        pub.assign(to: &$keyboardFrame)
+        pub.map { $0 != .zero }.assign(to: &$isShown)
     }
 }

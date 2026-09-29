@@ -344,30 +344,47 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     // MARK: update table
 
     func performInsertPreservingOffset(_ tableView: UITableView, _ coordinator: Coordinator) async {
+        reloadPreservingVisibleAnchor(tableView, coordinator)
+    }
+
+    /// Swaps in the new sections, reloads, and moves the offset so the first visible message
+    /// stays at the same screen position. Falls back to a plain reload when no message is visible.
+    @MainActor
+    private func reloadPreservingVisibleAnchor(_ tableView: UITableView, _ coordinator: Coordinator) {
         let oldIndicatorIP = UIList.lastReadIndicatorIndexPath(sections: coordinator.sections, enabled: chatParams.showLastReadIndicator)
 
-        // Skip the indicator row — it has no backing message to preserve by ID
+        // Skip the indicator row, it has no backing message to preserve by ID
         let visibleIndexPaths = tableView.indexPathsForVisibleRows ?? []
-        guard let firstVisibleIndexPath = visibleIndexPaths.first(where: { $0 != oldIndicatorIP }),
-              let preservedVisibleRect = tableView.rectForRow(at: firstVisibleIndexPath) as CGRect? else { return }
-
-        let dataRow = adjustedDataRow(firstVisibleIndexPath.row, section: firstVisibleIndexPath.section, indicator: oldIndicatorIP)
-        let firstVisibleRow = coordinator.sections[firstVisibleIndexPath.section].rows[dataRow]
-        let preservedVisibleMessageID = firstVisibleRow.message.id
-        let preservedOffset = tableView.contentOffset.y
+        var anchor: (id: String, rect: CGRect, offset: CGFloat)?
+        if let firstVisibleIndexPath = visibleIndexPaths.first(where: { $0 != oldIndicatorIP }) {
+            let dataRow = adjustedDataRow(firstVisibleIndexPath.row, section: firstVisibleIndexPath.section, indicator: oldIndicatorIP)
+            if coordinator.sections.indices.contains(firstVisibleIndexPath.section),
+               coordinator.sections[firstVisibleIndexPath.section].rows.indices.contains(dataRow) {
+                anchor = (
+                    coordinator.sections[firstVisibleIndexPath.section].rows[dataRow].message.id,
+                    tableView.rectForRow(at: firstVisibleIndexPath),
+                    tableView.contentOffset.y
+                )
+            }
+        }
 
         coordinator.sections = sections
 
+        CATransaction.begin()
         CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
 
-        tableView.reloadData()
-        tableView.layoutIfNeeded()
+        UIView.performWithoutAnimation {
+            tableView.reloadData()
+            tableView.layoutIfNeeded()
+        }
 
         let newIndicatorIP = UIList.lastReadIndicatorIndexPath(sections: sections, enabled: chatParams.showLastReadIndicator)
-        guard let newIndexPath = indexPath(for: preservedVisibleMessageID, in: sections, indicatorIndexPath: newIndicatorIP) else { return }
-        let newRectForCell = tableView.rectForRow(at: newIndexPath)
-        let newOffset = preservedOffset + (newRectForCell.minY - preservedVisibleRect.minY)
-        tableView.setContentOffset(CGPoint(x: 0, y: newOffset), animated: false)
+        if let anchor, let newIndexPath = indexPath(for: anchor.id, in: sections, indicatorIndexPath: newIndicatorIP) {
+            let newRectForCell = tableView.rectForRow(at: newIndexPath)
+            let newOffset = anchor.offset + (newRectForCell.minY - anchor.rect.minY)
+            tableView.setContentOffset(CGPoint(x: 0, y: newOffset), animated: false)
+        }
 
         tableView.relayoutHeadersFooters()
     }
@@ -380,6 +397,15 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     @MainActor
     private func updateTableNoAnimation(_ tableView: UITableView, _ coordinator: Coordinator) {
         let shouldMaintainBottomAnchor = isPinnedToBottom(tableView)
+
+        // Scrolled up in history: keep the visible message where it is when rows arrive at the
+        // newest end (or older pages at the far end). An explicit scroll follows a pendingScrollTo,
+        // and an empty table has nothing to anchor to.
+        if type == .conversation, !shouldMaintainBottomAnchor, pendingScrollTo == nil, !coordinator.sections.isEmpty {
+            reloadPreservingVisibleAnchor(tableView, coordinator)
+            return
+        }
+
         coordinator.sections = sections
 
         CATransaction.begin()
@@ -1022,7 +1048,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                     tableView.endUpdates()
                     tableView.relayoutHeadersFooters()
                     await handler.handleClosure()
-                    // set olderInProgress to false after table update is complete
+                    // a successful load clears olderInProgress after its table update
+                    resetPaginationFlagsIfNoUpdate(tableView)
                 }
             }
         }
@@ -1035,9 +1062,23 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                     tableView.endUpdates()
                     tableView.relayoutHeadersFooters()
                     await handler.handleClosure()
-                    // set newerInProgress to false after table update is complete
+                    // a successful load clears newerInProgress after its table update
+                    resetPaginationFlagsIfNoUpdate(tableView)
                 }
             }
+        }
+
+        /// A failed or empty load never produces a table update, so nothing would clear the
+        /// in-progress flags and pagination would stay blocked. Clears them unless an update is
+        /// running, which clears them itself.
+        private func resetPaginationFlagsIfNoUpdate(_ tableView: UITableView) {
+            guard !updateInProgress,
+                  paginationState.olderInProgress || paginationState.newerInProgress else { return }
+            tableView.beginUpdates()
+            paginationState.olderInProgress = false
+            paginationState.newerInProgress = false
+            tableView.endUpdates()
+            tableView.relayoutHeadersFooters()
         }
     }
 
