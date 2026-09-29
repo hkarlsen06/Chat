@@ -49,11 +49,6 @@ final actor RecordingPlayer: ObservableObject {
     private var player: AVPlayer?
     private var timeObserver: Any?
 
-    init() {
-        try? audioSession.setCategory(.playback)
-        try? audioSession.overrideOutputAudioPort(.speaker)
-    }
-
     func play(_ recording: Recording) {
         setupPlayer(for: recording)
         play()
@@ -102,6 +97,8 @@ final actor RecordingPlayer: ObservableObject {
     }
 
     private func play() {
+        try? audioSession.setCategory(.playback)
+        try? audioSession.overrideOutputAudioPort(.speaker)
         try? audioSession.setActive(true)
         player?.play()
         internalPlaying = true
