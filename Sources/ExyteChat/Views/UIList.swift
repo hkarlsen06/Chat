@@ -51,7 +51,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UITableView {
         let style = mainHeaderBuilder != nil || chatParams.showDateHeaders ? UITableView.Style.grouped : .plain
-        let tableView = UITableView(frame: .zero, style: style)
+        let tableView = ChatTableView(frame: .zero, style: style)
+        tableView.isFlipped = type == .conversation
         tableView.translatesAutoresizingMaskIntoConstraints = false
         tableView.separatorStyle = .none
         tableView.dataSource = context.coordinator
@@ -1050,6 +1051,28 @@ enum TableUpdateAnimationPolicy {
         newIDs: [String]
     ) -> Bool {
         transactionAnimated && !needsExternalScroll && previousIDs != newIDs
+    }
+}
+
+/// A flipped table keeps its newest row on the frame's bottom edge. When an
+/// interactive keyboard dismissal moves that edge under the finger, the rows
+/// already move with the keyboard, so the pan must not scroll them as well.
+final class ChatTableView: UITableView {
+    var isFlipped = false
+    private var lastBottomEdge: CGFloat?
+
+    override func layoutSubviews() {
+        // Track the on-screen bottom edge rather than the height, so a resize
+        // at the top of the list (like the network banner) is left alone.
+        let bottomEdge = convert(bounds, to: nil).maxY
+        if isFlipped, isTracking, let lastBottomEdge, bottomEdge != lastBottomEdge {
+            contentOffset.y = max(
+                contentOffset.y - (bottomEdge - lastBottomEdge),
+                -adjustedContentInset.top
+            )
+        }
+        lastBottomEdge = bottomEdge
+        super.layoutSubviews()
     }
 }
 
