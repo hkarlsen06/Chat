@@ -72,7 +72,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         tableView.sectionFooterHeight = 0
         tableView.tableHeaderView = nil
         tableView.tableFooterView = UIView(frame: .zero)
-        updateInsets(for: tableView)
+        updateInsets(for: tableView, coordinator: context.coordinator)
 
         let dismissKeyboardTapRecognizer = UITapGestureRecognizer(
             target: context.coordinator,
@@ -113,13 +113,18 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         !tableView.isDragging && !tableView.isTracking && !tableView.isDecelerating
     }
 
-    private func maintainBottomAnchorIfNeeded(_ tableView: UITableView, wasPinnedToBottom: Bool) {
-        guard wasPinnedToBottom, canAdjustBottomAnchor(tableView) else { return }
-
+    func maintainBottomAnchorIfNeeded(
+        _ tableView: UITableView, wasPinnedToBottom: Bool, coordinator: Coordinator
+    ) {
+        guard wasPinnedToBottom, pendingScrollTo == nil, canAdjustBottomAnchor(tableView) else { return }
+        let generation = coordinator.bottomAnchorGeneration
         scrollToBottom(tableView, animated: false)
 
-        DispatchQueue.main.async { [weak tableView] in
-            guard let tableView, self.canAdjustBottomAnchor(tableView) else { return }
+        DispatchQueue.main.async { [weak tableView, weak coordinator] in
+            guard let tableView, let coordinator,
+                  coordinator.bottomAnchorGeneration == generation,
+                  self.pendingScrollTo == nil,
+                  self.canAdjustBottomAnchor(tableView) else { return }
             self.scrollToBottom(tableView, animated: false)
         }
     }
@@ -138,7 +143,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         return insets
     }
 
-    private func updateInsets(for tableView: UITableView) {
+    private func updateInsets(for tableView: UITableView, coordinator: Coordinator) {
         let insets = resolvedContentInsets()
 
         guard tableView.contentInset != insets ||
@@ -153,7 +158,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
         if shouldMaintainLiveEdge {
             if tableView.numberOfSections > 0, tableView.numberOfRows(inSection: 0) > 0 {
-                maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: true)
+                maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: true, coordinator: coordinator)
             } else {
                 tableView.setContentOffset(
                     CGPoint(x: tableView.contentOffset.x, y: -insets.top),
@@ -173,7 +178,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             tableView.keyboardDismissMode = chatParams.keyboardDismissMode
         }
 
-        updateInsets(for: tableView)
+        if pendingScrollTo != nil { context.coordinator.bottomAnchorGeneration += 1 }
+        updateInsets(for: tableView, coordinator: context.coordinator)
 
         if !chatParams.isScrollEnabled {
             DispatchQueue.main.async {
@@ -232,7 +238,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                     pendingScrollTo = nil // reset to only scroll once
 
                     let perform = {
-                        performScrollTo(tableView, scrollToParams: scrollToParams)
+                        performScrollTo(tableView, scrollToParams: scrollToParams, coordinator: context.coordinator)
                     }
 
                     if chatParams.animateMessageUpdates, animationMode == .natural {
@@ -260,7 +266,9 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
     // MARK: scroll to
 
-    func performScrollTo(_ tableView: UITableView, scrollToParams: ScrollToParams) {
+    func performScrollTo(_ tableView: UITableView, scrollToParams: ScrollToParams, coordinator: Coordinator) {
+        // A deferred bottom anchor from an earlier reload must not undo this scroll.
+        coordinator.bottomAnchorGeneration += 1
         switch scrollToParams.scrollTo {
         case .messageID(let messageID, let position, let offset):
             scrollToRow(tableView, messageID: messageID, position: position, additionalOffset: offset)
@@ -416,7 +424,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             tableView.layoutIfNeeded()
         }
 
-        maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: shouldMaintainBottomAnchor)
+        maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: shouldMaintainBottomAnchor, coordinator: coordinator)
 
         CATransaction.commit()
     }
@@ -425,7 +433,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     private func updateTableWithAnimation(_ tableView: UITableView, _ coordinator: Coordinator) async {
         let prevSections = coordinator.sections
         let splitInfo = SplitInfo.operationsSplit(oldSections: prevSections, newSections: sections)
-        await applyOperations(tableView, splitInfo: splitInfo, prevSections: prevSections, animated: true) {
+        await applyOperations(tableView, coordinator: coordinator, splitInfo: splitInfo, prevSections: prevSections, animated: true) {
             coordinator.sections = $0
         }
     }
@@ -433,6 +441,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
     @MainActor
     private func applyOperations(
         _ tableView: UITableView,
+        coordinator: Coordinator,
         splitInfo: SplitInfo,
         prevSections: [MessagesSection],
         animated: Bool,
@@ -447,7 +456,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                 tableView.layoutIfNeeded()
             }
 
-            maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: shouldMaintainBottomAnchor)
+            maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: shouldMaintainBottomAnchor, coordinator: coordinator)
             if !chatParams.isScrollEnabled {
                 tableContentHeight = tableView.contentSize.height
             }
@@ -517,7 +526,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
 
         tableView.relayoutHeadersFooters()
 
-        maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: shouldMaintainBottomAnchor)
+        maintainBottomAnchorIfNeeded(tableView, wasPinnedToBottom: shouldMaintainBottomAnchor, coordinator: coordinator)
 
         if !chatParams.isScrollEnabled {
             tableContentHeight = tableView.contentSize.height
@@ -699,6 +708,7 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         let mainBackgroundColor: Color
 
         var updateInProgress: Bool = false
+        var bottomAnchorGeneration = 0
         /// call pagination handler when this row is reached
         /// without this there is a bug: during new cells insertion willDisplay is called one extra time for the cell which used to be the last one while it is being updated (its position in group is changed from first to middle)
         var olderPaginationTargetMessageID: String?
