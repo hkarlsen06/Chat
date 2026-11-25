@@ -258,6 +258,8 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                 context.coordinator.updateInProgress = false
                 context.coordinator.paginationState.olderInProgress = false
                 context.coordinator.paginationState.newerInProgress = false
+                context.coordinator.olderPaginationWaitsForDrag = false
+                context.coordinator.newerPaginationWaitsForDrag = false
                 tableView.endUpdates()
                 tableView.relayoutHeadersFooters()
             }
@@ -714,6 +716,10 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         var olderPaginationTargetMessageID: String?
         var newerPaginationTargetMessageID: String?
         let paginationState = PaginationState()
+        /// A load that changed nothing waits for the user's next drag. Without this, the relayout
+        /// that hides the loading row calls scrollViewDidScroll, which loads again, forever.
+        var olderPaginationWaitsForDrag = false
+        var newerPaginationWaitsForDrag = false
 
         // helpers to avoid queueing same updates multiple times
         var latestUpdateSections: [MessagesSection] = []
@@ -1007,6 +1013,11 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             true
         }
 
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            olderPaginationWaitsForDrag = false
+            newerPaginationWaitsForDrag = false
+        }
+
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             let contentOffset = scrollView.contentOffset.y
             let maxTopOffset = scrollView.contentSize.height - scrollView.frame.height - 1
@@ -1051,44 +1062,47 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         }
 
         func performOlderPagination(_ tableView: UITableView) {
-            if let handler = chatParams.olderMessagesPaginationHandler {
-                Task { @MainActor in
-                    tableView.beginUpdates()
-                    paginationState.olderInProgress = true
-                    tableView.endUpdates()
-                    tableView.relayoutHeadersFooters()
-                    await handler.handleClosure()
-                    // a successful load clears olderInProgress after its table update
-                    resetPaginationFlagsIfNoUpdate(tableView)
+            guard let handler = chatParams.olderMessagesPaginationHandler,
+                  !olderPaginationWaitsForDrag else { return }
+            // Set before the task starts, so the scroll events until then don't start more loads.
+            paginationState.olderInProgress = true
+            Task { @MainActor in
+                tableView.relayoutHeadersFooters()
+                await handler.handleClosure()
+                // a successful load clears olderInProgress after its table update
+                if finishWithoutUpdate(\.olderInProgress, tableView) {
+                    olderPaginationWaitsForDrag = true
                 }
             }
         }
 
         func performNewerPagination(_ tableView: UITableView) {
-            if let handler = chatParams.newerMessagesPaginationHandler {
-                paginationState.newerInProgress = true
-                Task { @MainActor in
-                    tableView.beginUpdates()
-                    tableView.endUpdates()
-                    tableView.relayoutHeadersFooters()
-                    await handler.handleClosure()
-                    // a successful load clears newerInProgress after its table update
-                    resetPaginationFlagsIfNoUpdate(tableView)
+            guard let handler = chatParams.newerMessagesPaginationHandler,
+                  !newerPaginationWaitsForDrag else { return }
+            paginationState.newerInProgress = true
+            Task { @MainActor in
+                tableView.relayoutHeadersFooters()
+                await handler.handleClosure()
+                // a successful load clears newerInProgress after its table update
+                if finishWithoutUpdate(\.newerInProgress, tableView) {
+                    newerPaginationWaitsForDrag = true
                 }
             }
         }
 
-        /// A failed or empty load never produces a table update, so nothing would clear the
-        /// in-progress flags and pagination would stay blocked. Clears them unless an update is
-        /// running, which clears them itself.
-        private func resetPaginationFlagsIfNoUpdate(_ tableView: UITableView) {
-            guard !updateInProgress,
-                  paginationState.olderInProgress || paginationState.newerInProgress else { return }
+        /// A failed or empty load never produces a table update, so nothing would clear its
+        /// in-progress flag and pagination would stay blocked. Clears the flag unless an update
+        /// is running, which clears it itself, and returns whether it did.
+        private func finishWithoutUpdate(
+            _ flag: ReferenceWritableKeyPath<PaginationState, Bool>,
+            _ tableView: UITableView
+        ) -> Bool {
+            guard !updateInProgress, paginationState[keyPath: flag] else { return false }
             tableView.beginUpdates()
-            paginationState.olderInProgress = false
-            paginationState.newerInProgress = false
+            paginationState[keyPath: flag] = false
             tableView.endUpdates()
             tableView.relayoutHeadersFooters()
+            return true
         }
     }
 
