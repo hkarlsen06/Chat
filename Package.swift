@@ -28,7 +28,8 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/exyte/AnchoredPopup.git",
-            from: "1.1.3"
+            // MediaPicker asks for 1.1.3 but uses PopupParameters.displayMode, added in 1.3.0.
+            from: "1.3.0"
         ),
     ],
     targets: [
