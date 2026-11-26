@@ -56,10 +56,15 @@ struct FooterView<TopContent: View>: View {
 }
 
 extension UITableView {
-    func relayoutHeadersFooters() {
-        // update header/footer heights without full reload
-        self.beginUpdates()
-        self.endUpdates()
+    /// Updates header and footer heights, such as a loading row's, without a full reload.
+    /// Unanimated, because an animated update animates the table's bounds while a fling
+    /// may still be moving them.
+    func relayoutHeadersFooters(_ changes: () -> Void = {}) {
+        UIView.performWithoutAnimation {
+            beginUpdates()
+            changes()
+            endUpdates()
+        }
     }
 }
 

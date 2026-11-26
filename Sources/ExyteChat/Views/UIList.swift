@@ -254,13 +254,13 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
                     }
                 }
 
-                tableView.beginUpdates()
-                context.coordinator.updateInProgress = false
-                context.coordinator.paginationState.olderInProgress = false
-                context.coordinator.paginationState.newerInProgress = false
-                context.coordinator.olderPaginationWaitsForDrag = false
-                context.coordinator.newerPaginationWaitsForDrag = false
-                tableView.endUpdates()
+                tableView.relayoutHeadersFooters {
+                    context.coordinator.updateInProgress = false
+                    context.coordinator.paginationState.olderInProgress = false
+                    context.coordinator.paginationState.newerInProgress = false
+                    context.coordinator.olderPaginationWaitsForDrag = false
+                    context.coordinator.newerPaginationWaitsForDrag = false
+                }
                 tableView.relayoutHeadersFooters()
             }
         }
@@ -393,7 +393,11 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         if let anchor, let newIndexPath = indexPath(for: anchor.id, in: sections, indicatorIndexPath: newIndicatorIP) {
             let newRectForCell = tableView.rectForRow(at: newIndexPath)
             let newOffset = anchor.offset + (newRectForCell.minY - anchor.rect.minY)
-            tableView.setContentOffset(CGPoint(x: 0, y: newOffset), animated: false)
+            // Setting the offset ends a fling, so it is left alone when the rows above the
+            // anchor kept their height, as they do when older messages arrive.
+            if abs(newOffset - tableView.contentOffset.y) > 0.5 {
+                tableView.setContentOffset(CGPoint(x: 0, y: newOffset), animated: false)
+            }
         }
 
         tableView.relayoutHeadersFooters()
@@ -1098,9 +1102,9 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
             _ tableView: UITableView
         ) -> Bool {
             guard !updateInProgress, paginationState[keyPath: flag] else { return false }
-            tableView.beginUpdates()
-            paginationState[keyPath: flag] = false
-            tableView.endUpdates()
+            tableView.relayoutHeadersFooters {
+                paginationState[keyPath: flag] = false
+            }
             tableView.relayoutHeadersFooters()
             return true
         }
